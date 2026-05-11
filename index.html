@@ -6,47 +6,39 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #111; color: white; margin: 0; padding: 10px; }
-        #reader { width: 100%; max-width: 400px; margin: auto; border-radius: 10px; overflow: hidden; background: #000; }
-        #info { margin-top: 15px; font-size: 14px; color: #00ff00; }
-        .hint { color: #888; font-size: 12px; margin-top: 5px; }
+        body { font-family: sans-serif; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; }
+        #reader { width: 100%; max-width: 400px; margin: auto; border: 2px solid #3390ec; border-radius: 10px; }
+        #status { margin-top: 15px; font-size: 16px; color: #00ff00; }
     </style>
 </head>
 <body>
-    <h3>QR Scanner Pro</h3>
+    <h3>QR СКАНЕР (ОСНОВНА КАМЕРА)</h3>
     <div id="reader"></div>
-    <div id="info">Очікування...</div>
-    <p class="hint">Наведіть на центр коду</p>
+    <div id="status">Пошук камери...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
         const html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 15, qrbox: { width: 250, height: 250 } };
+        
+        // Функція запуску саме задньої камери
+        function startCamera() {
+            html5QrCode.start(
+                { facingMode: "environment" }, // Це змушує вмикати задню камеру
+                { fps: 20, qrbox: 250 },
+                (decodedText) => {
+                    document.getElementById('status').innerText = "ЗЧИТАНО!";
+                    tg.sendData(decodedText);
+                    if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                    setTimeout(() => tg.close(), 500);
+                }
+            ).catch(err => {
+                document.getElementById('status').innerText = "Помилка: " + err;
+            });
+        }
 
-        // Запуск саме задньої камери
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            config,
-            (decodedText) => {
-                document.getElementById('info').innerText = "ЗЧИТАНО: " + decodedText;
-                document.getElementById('info').style.color = "gold";
-                
-                // Передача даних в Telegram
-                tg.sendData(decodedText);
-                
-                // Вібровідгук
-                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-                
-                // Закриття через півсекунди
-                setTimeout(() => { tg.close(); }, 600);
-            },
-            (errorMessage) => { /* ігноруємо помилки пошуку коду */ }
-        ).catch((err) => {
-            document.getElementById('info').innerText = "Помилка камери: " + err;
-            document.getElementById('info').style.color = "red";
-        });
+        startCamera();
     </script>
 </body>
 </html>
