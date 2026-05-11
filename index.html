@@ -2,32 +2,32 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #1c1c1c; color: white; margin: 0; padding: 20px; }
-        #reader { width: 100%; max-width: 400px; margin: auto; border-radius: 15px; border: 2px solid #3390ec; overflow: hidden; }
-        .status { margin-top: 20px; font-size: 16px; color: #aaaaaa; }
+        body { font-family: sans-serif; text-align: center; background: #1c1c1c; color: white; padding: 20px; }
+        #reader { width: 100%; max-width: 350px; margin: auto; border-radius: 10px; overflow: hidden; }
+        #status { margin-top: 20px; color: gold; font-weight: bold; }
     </style>
 </head>
 <body>
-    <h3>Скан квитка</h3>
+    <h3>QR СКАНЕР</h3>
     <div id="reader"></div>
-    <p class="status">Наведіть камеру на QR-код</p>
+    <div id="status">Очікування сканування...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
         function onScanSuccess(decodedText) {
-            tg.sendData(decodedText); // Відправляє ID квитка боту
-            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-            setTimeout(() => tg.close(), 100);
+            document.getElementById('status').innerText = "ДАНІ ВІДПРАВЛЕНО: " + decodedText;
+            tg.sendData(decodedText); 
+            // Даємо Telegram 0.5 сек, щоб відправити дані перед закриттям
+            setTimeout(() => { tg.close(); }, 500);
         }
 
-        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: 250 });
+        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 200 });
         html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
