@@ -2,33 +2,51 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #1c1c1c; color: white; padding: 20px; }
-        #reader { width: 100%; max-width: 350px; margin: auto; border-radius: 10px; overflow: hidden; }
-        #status { margin-top: 20px; color: gold; font-weight: bold; }
+        body { font-family: sans-serif; text-align: center; background: #111; color: white; margin: 0; padding: 10px; }
+        #reader { width: 100%; max-width: 400px; margin: auto; border-radius: 10px; overflow: hidden; background: #000; }
+        #info { margin-top: 15px; font-size: 14px; color: #00ff00; }
+        .hint { color: #888; font-size: 12px; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <h3>QR СКАНЕР</h3>
+    <h3>QR Scanner Pro</h3>
     <div id="reader"></div>
-    <div id="status">Очікування сканування...</div>
+    <div id="info">Очікування...</div>
+    <p class="hint">Наведіть на центр коду</p>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        function onScanSuccess(decodedText) {
-            document.getElementById('status').innerText = "ДАНІ ВІДПРАВЛЕНО: " + decodedText;
-            tg.sendData(decodedText); 
-            // Даємо Telegram 0.5 сек, щоб відправити дані перед закриттям
-            setTimeout(() => { tg.close(); }, 500);
-        }
+        const html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 15, qrbox: { width: 250, height: 250 } };
 
-        let html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: 200 });
-        html5QrcodeScanner.render(onScanSuccess);
+        // Запуск саме задньої камери
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config,
+            (decodedText) => {
+                document.getElementById('info').innerText = "ЗЧИТАНО: " + decodedText;
+                document.getElementById('info').style.color = "gold";
+                
+                // Передача даних в Telegram
+                tg.sendData(decodedText);
+                
+                // Вібровідгук
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+                
+                // Закриття через півсекунди
+                setTimeout(() => { tg.close(); }, 600);
+            },
+            (errorMessage) => { /* ігноруємо помилки пошуку коду */ }
+        ).catch((err) => {
+            document.getElementById('info').innerText = "Помилка камери: " + err;
+            document.getElementById('info').style.color = "red";
+        });
     </script>
 </body>
 </html>
