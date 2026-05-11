@@ -6,39 +6,51 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; }
-        #reader { width: 100%; max-width: 400px; margin: auto; border: 2px solid #3390ec; border-radius: 10px; }
-        #status { margin-top: 15px; font-size: 16px; color: #00ff00; }
+        body { font-family: sans-serif; text-align: center; margin: 0; transition: background 0.3s; background: #000; color: white; }
+        #reader { width: 100vw; height: 70vh; }
+        #result-box { padding: 20px; font-size: 20px; font-weight: bold; }
+        .green { background: #006400 !important; } /* Темно-зелений */
+        .red { background: #8b0000 !important; }   /* Темно-червоний */
     </style>
 </head>
 <body>
-    <h3>QR СКАНЕР (ОСНОВНА КАМЕРА)</h3>
+    <div id="result-box">ПІДНЕСІТЬ КВИТОК</div>
     <div id="reader"></div>
-    <div id="status">Пошук камери...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        const resBox = document.getElementById('result-box');
+        let isScanning = true;
 
-        const html5QrCode = new Html5Qrcode("reader");
-        
-        // Функція запуску саме задньої камери
-        function startCamera() {
-            html5QrCode.start(
-                { facingMode: "environment" }, // Це змушує вмикати задню камеру
-                { fps: 20, qrbox: 250 },
-                (decodedText) => {
-                    document.getElementById('status').innerText = "ЗЧИТАНО!";
-                    tg.sendData(decodedText);
-                    if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-                    setTimeout(() => tg.close(), 500);
-                }
-            ).catch(err => {
-                document.getElementById('status').innerText = "Помилка: " + err;
-            });
+        const scanner = new Html5Qrcode("reader");
+
+        function onScan(decodedText) {
+            if (!isScanning) return;
+            isScanning = false; // Пауза, щоб не сканувати один код 100 разів
+
+            // Відправляємо дані боту ТАК, щоб вікно НЕ закрилося
+            // Для цього використовуємо спеціальний метод
+            tg.sendData(decodedText); 
+            
+            // Оскільки tg.sendData все одно може закрити вікно в деяких версіях, 
+            // ми додамо візуальний ефект тут для тесту:
+            resBox.innerText = "ОБРОБКА: " + decodedText;
         }
 
-        startCamera();
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScan);
+
+        // Цей скрипт слухає "відповідь" від бота (якщо ми захочемо докрутити логіку пізніше)
+        // Але зараз ми просто зробимо паузу 2 секунди і скинемо колір
+        setInterval(() => {
+            if (!isScanning) {
+                setTimeout(() => {
+                    document.body.className = "";
+                    resBox.innerText = "ГОТОВИЙ ДО НАСТУПНОГО";
+                    isScanning = true;
+                }, 2000);
+            }
+        }, 500);
     </script>
 </body>
 </html>
