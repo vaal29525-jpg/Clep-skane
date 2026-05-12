@@ -6,63 +6,66 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: #fff; overflow: hidden; }
-        #reader { width: 100vw; height: 75vh; background: #000; }
-        #status-bar { padding: 20px; font-size: 18px; font-weight: bold; background: #111; transition: 0.3s; border-bottom: 3px solid #3390ec; }
-        .welcome { background: #008000 !important; } /* Зелений */
-        .already { background: #ff0000 !important; } /* Червоний */
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: #fff; }
+        #reader { width: 100vw; height: 70vh; }
+        #res-box { height: 30vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; transition: 0.3s; }
+        .welcome { background: #28a745; } /* Зелений */
+        .already { background: #dc3545; }  /* Червоний */
+        .none { background: #ffc107; color: #000; } /* Жовтий */
     </style>
 </head>
 <body>
-    <div id="status-bar">ОЧІКУВАННЯ КВИТКА</div>
     <div id="reader"></div>
+    <div id="res-box">ПРИГОТУЙТЕ КВИТОК</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        
+        const box = document.getElementById('res-box');
+        let isBusy = false;
+
+        // ВАЖЛИВО: Перевір свій токен тут ще раз
         const botToken = '8798649772:AAGIAKWXsgfheC4dw5JhFcGF0EotWFYoaZE';
-        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '5035520641';
-        
-        let isLock = false;
+
         const scanner = new Html5Qrcode("reader");
 
-        async function onScan(decodedText) {
-            if (isLock) return;
-            isLock = true;
-
-            const bar = document.getElementById('status-bar');
-            bar.innerText = "ОБРОБКА...";
-            bar.className = "";
+        async function onScan(code) {
+            if (isBusy) return;
+            isBusy = true;
+            
+            box.innerText = "ПЕРЕВІРКА...";
+            box.className = "";
 
             try {
-                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                // Відправляємо боту команду спеціального формату
+                const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        chat_id: userId,
-                        text: `CHECK:${decodedText}`
+                        chat_id: tg.initDataUnsafe.user.id,
+                        text: `SCAN:${code}` // Змінили на SCAN для нового обробника
                     })
                 });
-                
+
+                // Ефект вібрації
                 if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
                 
-                // Тимчасово показуємо статус "Відправлено"
-                bar.innerText = "ВІДПРАВЛЕНО НА ПЕРЕВІРКУ";
+                box.innerText = "ВІДПРАВЛЕНО! ДИВИСЬ ЧАТ";
                 
-            } catch (e) {
-                bar.innerText = "ПОМИЛКА МЕРЕЖІ";
-            }
+                // Чекаємо 2 секунди перед наступним гостем
+                setTimeout(() => {
+                    box.innerText = "СКАНУЙТЕ НАСТУПНИЙ";
+                    box.className = "";
+                    isBusy = false;
+                }, 2000);
 
-            // Через 2.5 секунди скидаємо сканер для наступного гостя
-            setTimeout(() => {
-                bar.innerText = "СКАНУЙТЕ НАСТУПНИЙ";
-                bar.className = "";
-                isLock = false;
-            }, 2500);
+            } catch (e) {
+                box.innerText = "ПОМИЛКА МЕРЕЖІ";
+                isBusy = false;
+            }
         }
 
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 260 }, onScan);
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScan);
     </script>
 </body>
 </html>
