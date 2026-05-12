@@ -2,135 +2,56 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>Clap Scanner Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        :root { --main-color: #007aff; --bg-dark: #090909; }
-        body { margin: 0; background: var(--bg-dark); color: white; font-family: -apple-system, system-ui, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-        
-        #scanner-container { position: relative; width: 100%; height: 70vh; background: #000; }
-        #preview { width: 100%; height: 100%; object-fit: cover; }
-        
-        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
-        .focus-box { width: 250px; height: 250px; border: 2px solid rgba(255,255,255,0.3); border-radius: 40px; position: relative; box-shadow: 0 0 0 2000px rgba(0,0,0,0.7); }
-        .focus-box::after { content: ''; position: absolute; inset: -5px; border: 4px solid var(--main-color); border-radius: 45px; clip-path: inset(0 0 75% 75%); } /* Кут 1 */
-        
-        .laser { position: absolute; width: 90%; left: 5%; height: 2px; background: var(--main-color); top: 10%; animation: scan 2.5s infinite ease-in-out; box-shadow: 0 0 15px var(--main-color); }
-        @keyframes scan { 0%, 100% { top: 10%; } 50% { top: 90%; } }
-
-        .interface { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; background: #121212; border-top: 1px solid #333; padding: 20px; }
-        .info-panel { text-align: center; }
-        #status { color: var(--main-color); font-weight: bold; font-size: 14px; margin-bottom: 5px; }
-        
-        .btn-group { display: flex; gap: 10px; width: 100%; }
-        button { flex: 1; padding: 16px; border-radius: 12px; border: none; font-weight: bold; font-size: 14px; transition: 0.2s; }
-        .btn-main { background: var(--main-color); color: white; }
-        .btn-sec { background: #222; color: #888; }
-        
-        #result-screen { position: fixed; inset: 0; z-index: 100; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
-        .result-icon { font-size: 80px; margin-bottom: 20px; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; height: 100vh; overflow: hidden; }
+        #video { width: 100%; height: 75vh; object-fit: cover; }
+        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 250px; border: 3px solid #007aff; border-radius: 40px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 5; }
+        .panel { height: 25vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; }
+        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; width: 80%; }
+        #popup { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; flex-direction: column; }
     </style>
 </head>
 <body>
-    <div id="scanner-container">
-        <video id="preview"></video>
-        <div class="overlay">
-            <div class="focus-box"><div class="laser"></div></div>
-        </div>
+    <video id="video" playsinline></video>
+    <div class="overlay"></div>
+    <div class="panel">
+        <div id="status" style="margin-bottom: 10px; color: #007aff;">СТАТУС: ОЧІКУВАННЯ</div>
+        <button onclick="startCam()">🔄 УВІМКНУТИ КАМЕРУ</button>
     </div>
-
-    <div class="interface">
-        <div class="info-panel">
-            <div id="status">ІНІЦІАЛІЗАЦІЯ...</div>
-            <div style="font-size: 12px; color: #555;">Boryslav Entry Control System v3.0</div>
-        </div>
-        
-        <div class="btn-group">
-            <button class="btn-main" onclick="bootCamera()">🔄 ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
-            <button class="btn-sec" onclick="location.reload()">ОНОВИТИ СТОРІНКУ</button>
-        </div>
-    </div>
-
-    <div id="result-screen">
-        <div class="result-icon" id="res-icon"></div>
-        <div style="font-size: 24px; font-weight: bold;" id="res-text"></div>
-    </div>
+    <div id="popup"><h1 id="res"></h1></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        
         const codeReader = new ZXing.BrowserQRCodeReader();
-        let activeStream = null;
-        let isLocked = false;
 
-        async function bootCamera() {
-            const statusLabel = document.getElementById('status');
-            const videoElement = document.getElementById('preview');
-            
-            if (activeStream) {
-                activeStream.getTracks().forEach(track => track.stop());
-            }
-
+        async function startCam() {
             try {
-                // Примусовий вибір задньої камери (environment)
-                const constraints = {
-                    video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 } }
-                };
-                
-                activeStream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoElement.srcObject = activeStream;
-                videoElement.setAttribute("playsinline", true);
-                await videoElement.play();
-                
-                statusLabel.innerText = "СКАНЕР ГОТОВИЙ";
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "environment" } 
+                });
+                document.getElementById('video').srcObject = stream;
+                await document.getElementById('video').play();
+                document.getElementById('status').innerText = "СКАНЕР АКТИВНИЙ";
 
-                codeReader.decodeFromVideoDevice(undefined, 'preview', (result, error) => {
-                    if (result && !isLocked) {
-                        isLocked = true;
-                        handleDetection(result.getText());
+                codeReader.decodeFromVideoDevice(undefined, 'video', (result) => {
+                    if (result) {
+                        const isOk = result.getText().startsWith("CLP-");
+                        const pop = document.getElementById('popup');
+                        pop.style.display = 'flex';
+                        pop.style.background = isOk ? "rgba(40, 167, 69, 0.9)" : "rgba(220, 53, 69, 0.9)";
+                        document.getElementById('res').innerText = isOk ? "✅ ДОСТУП" : "❌ ВІДМОВА";
+                        tg.HapticFeedback.notificationOccurred(isOk ? 'success' : 'error');
+                        setTimeout(() => pop.style.display = 'none', 2500);
                     }
                 });
-            } catch (err) {
-                statusLabel.innerText = "ПОМИЛКА: " + err.message;
-                // Спроба будь-якої доступної камери як резерв
-                navigator.mediaDevices.getUserMedia({ video: true }).then(s => {
-                    activeStream = s;
-                    videoElement.srcObject = s;
-                    videoElement.play();
-                });
-            }
+            } catch (e) { alert("Помилка камери: " + e); }
         }
-
-        function handleDetection(code) {
-            const screen = document.getElementById('result-screen');
-            const icon = document.getElementById('res-icon');
-            const text = document.getElementById('res-text');
-            
-            const isClap = code.startsWith("CLP-");
-            
-            screen.style.display = 'flex';
-            if (isClap) {
-                icon.innerText = "✅";
-                text.innerText = "ДОСТУП ДОЗВОЛЕНО\n" + code;
-                screen.style.backgroundColor = "rgba(40, 167, 69, 0.95)";
-                tg.HapticFeedback.notificationOccurred('success');
-            } else {
-                icon.innerText = "❌";
-                text.innerText = "НЕВІДОМИЙ КВИТОК";
-                screen.style.backgroundColor = "rgba(220, 53, 69, 0.95)";
-                tg.HapticFeedback.notificationOccurred('error');
-            }
-
-            setTimeout(() => {
-                screen.style.display = 'none';
-                isLocked = false;
-            }, 3000);
-        }
-
-        window.onload = bootCamera;
+        window.onload = startCam;
     </script>
 </body>
 </html>
