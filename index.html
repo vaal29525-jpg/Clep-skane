@@ -2,88 +2,143 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Scanner Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Access Professional</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        :root { --main: #007AFF; --bg: #000; }
-        body { margin: 0; background: var(--bg); color: #fff; font-family: sans-serif; overflow: hidden; }
+        :root { --main-blue: #007AFF; --bg-dark: #000000; --panel-bg: #111111; }
+        body { margin: 0; background: var(--bg-dark); color: #fff; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; height: 100vh; }
         
-        /* Професійний UI */
-        .camera-view { position: relative; height: 75vh; background: #111; overflow: hidden; }
-        #video { width: 100%; height: 100%; object-fit: cover; }
+        /* Layout Architecture */
+        .app-wrapper { display: flex; flex-direction: column; height: 100vh; }
         
-        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 250px; border: 2px solid rgba(255,255,255,0.2); border-radius: 40px; }
-        .laser { position: absolute; width: 100%; height: 2px; background: var(--main); box-shadow: 0 0 15px var(--main); top: 0; animation: move 2s infinite linear; }
-        
-        @keyframes move { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+        .header { padding: 15px; text-align: center; background: var(--panel-bg); border-bottom: 1px solid #222; }
+        .header h1 { margin: 0; font-size: 16px; letter-spacing: 1px; color: var(--main-blue); }
 
-        .ui-panel { height: 25vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-        .status { color: var(--main); font-size: 14px; margin-bottom: 15px; font-weight: bold; }
-        .action-btn { background: var(--main); color: #fff; border: none; padding: 15px 50px; border-radius: 12px; font-weight: bold; width: 100%; }
+        .scanner-viewport { position: relative; flex: 1; background: #050505; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #video-stream { width: 100%; height: 100%; object-fit: cover; }
 
-        #result-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; display: none; align-items: center; justify-content: center; text-align: center; }
+        /* Scanning Overlay */
+        .scan-mask { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+        .focus-area { width: 260px; height: 260px; border: 2px solid rgba(255,255,255,0.1); border-radius: 40px; position: relative; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); }
+        .corner { position: absolute; width: 30px; height: 30px; border: 4px solid var(--main-blue); }
+        .tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 15px; }
+        .tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 15px; }
+        .bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 15px; }
+        .br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 15px; }
+        
+        .scan-anim-line { position: absolute; width: 90%; left: 5%; height: 3px; background: var(--main-blue); box-shadow: 0 0 20px var(--main-blue); animation: scan-loop 2.5s infinite ease-in-out; }
+        @keyframes scan-loop { 0%, 100% { top: 10%; } 50% { top: 90%; } }
+
+        .control-panel { padding: 30px 20px; background: var(--panel-bg); text-align: center; border-top: 1px solid #222; }
+        .status-indicator { font-size: 13px; color: #666; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1.5px; }
+        
+        .action-btn { background: var(--main-blue); color: #fff; border: none; padding: 18px 0; width: 100%; border-radius: 16px; font-size: 16px; font-weight: 700; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(0,122,255,0.4); }
+        .action-btn:active { transform: scale(0.96); }
+
+        /* Notification Modal */
+        #notification-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        .modal-box { background: #1c1c1e; padding: 40px 30px; border-radius: 30px; width: 80%; text-align: center; border: 1px solid #333; }
     </style>
 </head>
 <body>
 
-    <div class="camera-view">
-        <video id="video"></video>
-        <div class="overlay"><div class="laser"></div></div>
+    <div class="app-wrapper">
+        <div class="header">
+            <h1>CLAP SYSTEM • SECURE SCAN</h1>
+        </div>
+
+        <div class="scanner-viewport">
+            <video id="video-stream" playsinline></video>
+            <div class="scan-mask">
+                <div class="focus-area">
+                    <div class="corner tl"></div><div class="corner tr"></div>
+                    <div class="corner bl"></div><div class="corner br"></div>
+                    <div class="scan-anim-line"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-panel">
+            <div id="status-text" class="status-indicator">Запуск оптичного модуля...</div>
+            <button class="action-btn" onclick="requestCameraAccess()">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
+        </div>
     </div>
 
-    <div class="ui-panel">
-        <div id="msg" class="status">ІНІЦІАЛІЗАЦІЯ ОБ'ЄКТИВА...</div>
-        <button class="action-btn" onclick="startScanner()">ПЕРЕЗАВАНТАЖИТИ</button>
-    </div>
-
-    <div id="result-screen">
-        <div style="padding: 30px; background: #1a1a1a; border-radius: 20px;">
-            <h2 id="res-title">ОБРОБКА...</h2>
+    <div id="notification-overlay">
+        <div class="modal-box">
+            <h2 id="modal-title">ОБРОБКА...</h2>
+            <p id="modal-body" style="color: #888;">Дані передаються в Telegram</p>
         </div>
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        const reader = new ZXing.BrowserQRCodeReader();
-        let isActive = true;
+        /**
+         * CORE SCANNING ENGINE
+         * Розроблено для інтеграції з Telegram WebApp API
+         */
+        const telegramApp = window.Telegram.WebApp;
+        telegramApp.expand();
+        telegramApp.ready();
 
-        async function startScanner() {
-            const videoElement = document.getElementById('video');
-            const msg = document.getElementById('msg');
+        const qrReader = new ZXing.BrowserQRCodeReader();
+        let isProcessingScan = false;
 
+        async function requestCameraAccess() {
+            const statusLabel = document.getElementById('status-text');
+            const videoElem = document.getElementById('video-stream');
+            
             try {
-                const devices = await reader.listVideoInputDevices();
-                const backCam = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+                statusLabel.innerText = "Пошук пристроїв...";
+                const devices = await qrReader.listVideoInputDevices();
                 
-                msg.innerText = "СКАНЕР АКТИВНИЙ (BACK CAMERA)";
+                // Інтелектуальний вибір задньої камери
+                const preferredCamera = devices.find(d => 
+                    d.label.toLowerCase().includes('back') || 
+                    d.label.toLowerCase().includes('задняя')
+                ) || devices[0];
 
-                reader.decodeFromVideoDevice(backCam.deviceId, 'video', (result, error) => {
-                    if (result && isActive) {
-                        isActive = false;
-                        processCode(result.getText());
+                if (!preferredCamera) throw new Error("No camera found");
+
+                statusLabel.innerText = "Оптика активована";
+                
+                qrReader.decodeFromVideoDevice(preferredCamera.deviceId, 'video-stream', (result, error) => {
+                    if (result && !isProcessingScan) {
+                        isProcessingScan = true;
+                        handleSuccessfulScan(result.getText());
                     }
                 });
             } catch (err) {
-                msg.innerText = "ПОМИЛКА КАМЕРИ";
+                statusLabel.innerText = "Помилка доступу до камери";
+                console.error("Camera error:", err);
             }
         }
 
-        function processCode(code) {
-            document.getElementById('result-screen').style.display = 'flex';
-            tg.HapticFeedback.impactOccurred('medium');
+        function handleSuccessfulScan(content) {
+            const overlay = document.getElementById('notification-overlay');
+            const title = document.getElementById('modal-title');
             
-            // Миттєва відправка даних у бот
-            tg.sendData(code);
+            // Візуальний відгук
+            overlay.style.display = 'flex';
+            title.innerText = "КВИТОК ЗЧИТАНО";
             
+            // Тактильний відгук (вібрація)
+            telegramApp.HapticFeedback.notificationOccurred('success');
+
+            // Передача даних у бот
+            // ВАЖЛИВО: Використовуємо затримку, щоб Telegram встиг обробити потік
             setTimeout(() => {
-                tg.close();
-            }, 1000);
+                telegramApp.sendData(content);
+                // Програма автоматично закриється після sendData
+            }, 500);
         }
 
-        window.onload = startScanner;
+        // Автоматичний запуск при старті сторінки
+        window.addEventListener('DOMContentLoaded', requestCameraAccess);
+        
+        // Налаштування теми Telegram
+        document.documentElement.style.setProperty('--main-blue', telegramApp.themeParams.button_color || '#007AFF');
     </script>
 </body>
 </html>
