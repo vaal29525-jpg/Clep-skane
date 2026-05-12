@@ -2,136 +2,81 @@
 <html lang="uk">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Clap Control Pro Scanner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Pro Max Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        :root { --main-blue: #007aff; --main-green: #28a745; --main-red: #dc3545; }
-        body { margin: 0; padding: 0; background: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; }
-        
-        #video-preview { width: 100%; height: 100vh; object-fit: cover; position: absolute; top: 0; left: 0; }
-        
-        .overlay-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
-        .scanner-window { width: 270px; height: 270px; border: 2px solid rgba(255,255,255,0.4); border-radius: 50px; position: relative; box-shadow: 0 0 0 2000px rgba(0,0,0,0.7); }
-        .scanner-window::after { content: ''; position: absolute; width: 90%; left: 5%; height: 2px; background: var(--main-blue); top: 0; animation: scanLine 2s infinite ease-in-out; box-shadow: 0 0 15px var(--main-blue); }
-        
-        @keyframes scanLine { 0%, 100% { top: 10%; opacity: 0.3; } 50% { top: 90%; opacity: 1; } }
-
-        .control-panel { position: fixed; bottom: 50px; width: 85%; background: rgba(30,30,30,0.85); backdrop-filter: blur(20px); padding: 20px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1); pointer-events: auto; }
-        .status-txt { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 5px; }
-        .sub-txt { text-align: center; font-size: 13px; opacity: 0.6; }
-
-        .fullscreen-result { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        .res-icon { font-size: 80px; margin-bottom: 20px; }
-        .res-name { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        #video { width: 100%; height: 100vh; object-fit: cover; }
+        .ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
+        .scan-area { width: 250px; height: 250px; border: 4px solid #007aff; border-radius: 40px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.8); position: relative; }
+        .line { position: absolute; width: 100%; height: 2px; background: #fff; top: 0; animation: move 2.5s infinite linear; }
+        @keyframes move { from { top: 0%; } to { top: 100%; } }
+        .info { position: fixed; bottom: 40px; background: rgba(255,255,255,0.1); padding: 15px 30px; border-radius: 50px; backdrop-filter: blur(10px); }
+        #result { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; font-size: 30px; font-weight: bold; z-index: 100; }
     </style>
 </head>
 <body>
-    <video id="video-preview" playsinline></video>
-    
-    <div class="overlay-ui">
-        <div class="scanner-window"></div>
-        <div class="control-panel">
-            <div id="status-label" class="status-txt">Очікування QR-коду...</div>
-            <div id="detail-label" class="sub-txt">Тримайте телефон паралельно квитку</div>
-            <button onclick="location.reload()" style="width:100%; margin-top:15px; background:var(--main-blue); border:none; color:white; padding:12px; border-radius:15px; font-weight:bold;">ОНОВИТИ КАМЕРУ</button>
-        </div>
+    <video id="video"></video>
+    <div class="ui">
+        <div class="scan-area"><div class="line"></div></div>
+        <div class="info">Сканер готовий до 500 кодів</div>
     </div>
-
-    <div id="result-overlay" class="fullscreen-result">
-        <div class="res-icon" id="res-icon"></div>
-        <div class="res-name" id="res-name">Гість</div>
-        <div style="font-size: 20px;" id="res-msg">Статус</div>
-    </div>
+    <div id="result"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.ready();
 
-        const video = document.getElementById('video-preview');
-        const codeReader = new ZXing.BrowserQRCodeReader();
-        let guestData = {};
-        let isProcessing = false;
+        const validCodes = new Set();
+        const usedCodes = new Set();
 
-        // Ініціалізація бази гостей з URL-хешу
-        (function bootstrap() {
+        // Ініціалізація 500 кодів (CLAP-1001 до CLAP-1500)
+        for(let i = 1001; i <= 1500; i++) {
+            validCodes.add(`CLAP-${i}`);
+        }
+
+        function showStatus(text, color) {
+            const res = document.getElementById('result');
+            res.innerText = text;
+            res.style.background = color;
+            res.style.display = 'flex';
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(text.includes('OK') ? 'success' : 'error');
+            setTimeout(() => { res.style.display = 'none'; processing = false; }, 2500);
+        }
+
+        let processing = false;
+        const reader = new ZXing.BrowserQRCodeReader();
+
+        async function initCamera() {
             try {
-                const rawHash = window.location.hash.substring(1);
-                if (rawHash) {
-                    guestData = JSON.parse(atob(rawHash));
-                }
-            } catch (err) { console.error("Data decode error", err); }
-        })();
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                document.getElementById('video').srcObject = stream;
+                document.getElementById('video').play();
 
-        async function startEngine() {
-            try {
-                const streamConstraints = {
-                    video: { 
-                        facingMode: "environment", 
-                        width: { ideal: 1280 }, 
-                        height: { ideal: 720 } 
-                    }
-                };
-                
-                const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
-                video.srcObject = stream;
-                video.setAttribute("playsinline", true);
-                await video.play();
-
-                // Налаштування для максимальної чутливості
-                const decodeHints = new Map();
-                decodeHints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-                codeReader.decodeFromVideoDevice(undefined, 'video-preview', (result) => {
-                    if (result && !isProcessing) {
-                        isProcessing = true;
-                        handleScan(result.getText());
+                reader.decodeFromVideoDevice(undefined, 'video', (result) => {
+                    if (result && !processing) {
+                        processing = true;
+                        const code = result.getText().trim();
+                        
+                        if (validCodes.has(code)) {
+                            if (!usedCodes.has(code)) {
+                                usedCodes.add(code);
+                                showStatus("✅ КВИТОК OK", "#28a745");
+                                tg.sendData("USED:" + code);
+                            } else {
+                                showStatus("❌ ПОВТОР!", "#dc3545");
+                            }
+                        } else {
+                            showStatus("⚠️ НЕВІДОМИЙ", "#ff9500");
+                        }
                     }
                 });
-            } catch (e) {
-                document.getElementById('status-label').innerText = "Помилка камери!";
-                alert("Будь ласка, дозвольте доступ до камери в налаштуваннях.");
-            }
+            } catch (e) { alert("Помилка камери"); }
         }
 
-        function handleScan(code) {
-            const guest = guestData[code];
-            const overlay = document.getElementById('result-overlay');
-            
-            if (guest) {
-                if (guest.s === 0) {
-                    guest.s = 1;
-                    triggerResult("✅", guest.n, "ПРОХОДЬТЕ", "var(--main-green)");
-                    tg.sendData("SCAN_SUCCESS:" + code);
-                } else {
-                    triggerResult("❌", guest.n, "ВЖЕ В ЗАЛІ", "var(--main-red)");
-                }
-            } else {
-                triggerResult("⚠️", "НЕВІДОМИЙ", "КВИТОК НЕ ЗНАЙДЕНО", "#ff9500");
-            }
-        }
-
-        function triggerResult(icon, name, msg, bgColor) {
-            const overlay = document.getElementById('result-overlay');
-            overlay.style.display = 'flex';
-            overlay.style.background = bgColor;
-            document.getElementById('res-icon').innerText = icon;
-            document.getElementById('res-name').innerText = name;
-            document.getElementById('res-msg').innerText = msg;
-            
-            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(icon === '✅' ? 'success' : 'error');
-
-            setTimeout(() => {
-                overlay.style.display = 'none';
-                isProcessing = false;
-            }, 3000);
-        }
-
-        window.onload = startEngine;
+        window.onload = initCamera;
     </script>
 </body>
 </html>
