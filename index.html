@@ -3,55 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Scanner</title>
+    <title>Scanner Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; height: 100vh; overflow: hidden; }
-        #video { width: 100%; height: 75vh; object-fit: cover; }
-        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 250px; height: 250px; border: 3px solid #007aff; border-radius: 40px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); z-index: 5; }
-        .panel { height: 25vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #1a1a1a; }
-        button { background: #007aff; color: white; border: none; padding: 15px 30px; border-radius: 12px; font-weight: bold; width: 80%; }
-        #popup { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; flex-direction: column; }
+        :root { --primary: #007AFF; --bg: #0a0a0a; }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto; overflow: hidden; height: 100vh; }
+        
+        /* Дизайнерський інтерфейс */
+        .camera-container { position: relative; height: 70vh; overflow: hidden; border-bottom: 2px solid #222; }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        
+        .scan-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 260px; height: 260px; border: 2px solid rgba(255,255,255,0.2); border-radius: 40px; pointer-events: none; }
+        .scan-line { position: absolute; width: 100%; height: 4px; background: var(--primary); box-shadow: 0 0 20px var(--primary); top: 0; animation: scan 2s infinite ease-in-out; }
+        @keyframes scan { 0%, 100% { top: 5%; } 50% { top: 95%; } }
+
+        .controls { height: 30vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box; }
+        .status-badge { padding: 8px 16px; border-radius: 20px; background: #1c1c1e; color: var(--primary); font-size: 12px; font-weight: 600; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .main-btn { background: var(--primary); color: white; border: none; padding: 18px 0; width: 90%; border-radius: 16px; font-size: 18px; font-weight: bold; transition: 0.3s; box-shadow: 0 10px 20px rgba(0,122,255,0.3); }
+        .main-btn:active { transform: scale(0.95); background: #0056b3; }
+
+        /* Повідомлення про результат */
+        #notify { position: fixed; top: 0; left: 0; right: 0; height: 100vh; z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
+        .result-card { background: #1c1c1e; padding: 40px; border-radius: 30px; text-align: center; width: 70%; border: 1px solid #333; }
     </style>
 </head>
 <body>
-    <video id="video" playsinline></video>
-    <div class="overlay"></div>
-    <div class="panel">
-        <div id="status" style="margin-bottom: 10px; color: #007aff;">СТАТУС: ОЧІКУВАННЯ</div>
-        <button onclick="startCam()">🔄 УВІМКНУТИ КАМЕРУ</button>
+
+    <div class="camera-container">
+        <video id="video" playsinline></video>
+        <div class="scan-overlay">
+            <div class="scan-line"></div>
+        </div>
     </div>
-    <div id="popup"><h1 id="res"></h1></div>
+
+    <div class="controls">
+        <div id="status" class="status-badge">Ініціалізація лінзи...</div>
+        <button class="main-btn" onclick="initScanner()">🔄 ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
+    </div>
+
+    <div id="notify">
+        <div class="result-card">
+            <h1 id="res-text"></h1>
+            <p id="res-sub"></p>
+        </div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         const codeReader = new ZXing.BrowserQRCodeReader();
+        let selectedDeviceId;
 
-        async function startCam() {
+        async function initScanner() {
+            const status = document.getElementById('status');
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: "environment" } 
-                });
-                document.getElementById('video').srcObject = stream;
-                await document.getElementById('video').play();
-                document.getElementById('status').innerText = "СКАНЕР АКТИВНИЙ";
-
-                codeReader.decodeFromVideoDevice(undefined, 'video', (result) => {
+                const videoDevices = await codeReader.listVideoInputDevices();
+                // Шукаємо саме задню камеру (back camera)
+                selectedDeviceId = videoDevices.find(device => device.label.toLowerCase().includes('back'))?.deviceId || videoDevices[0].deviceId;
+                
+                status.innerText = "ОПТИЧНИЙ МОДУЛЬ АКТИВНИЙ";
+                
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                     if (result) {
-                        const isOk = result.getText().startsWith("CLP-");
-                        const pop = document.getElementById('popup');
-                        pop.style.display = 'flex';
-                        pop.style.background = isOk ? "rgba(40, 167, 69, 0.9)" : "rgba(220, 53, 69, 0.9)";
-                        document.getElementById('res').innerText = isOk ? "✅ ДОСТУП" : "❌ ВІДМОВА";
-                        tg.HapticFeedback.notificationOccurred(isOk ? 'success' : 'error');
-                        setTimeout(() => pop.style.display = 'none', 2500);
+                        handleScan(result.getText());
                     }
                 });
-            } catch (e) { alert("Помилка камери: " + e); }
+            } catch (e) {
+                status.innerText = "ПОМИЛКА ДОСТУПУ";
+                console.error(e);
+            }
         }
-        window.onload = startCam;
+
+        function handleScan(code) {
+            const notify = document.getElementById('notify');
+            const resText = document.getElementById('res-text');
+            
+            // Миттєво відправляємо код у бот для перевірки статусу (used/active)
+            tg.sendData(code);
+            
+            // Візуальний відгук
+            notify.style.display = 'flex';
+            resText.innerText = "ОБРОБКА...";
+            tg.HapticFeedback.impactOccurred('medium');
+
+            setTimeout(() => {
+                notify.style.display = 'none';
+            }, 2000);
+        }
+
+        // Автозапуск при завантаженні
+        window.addEventListener('load', initScanner);
     </script>
 </body>
 </html>
