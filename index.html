@@ -5,140 +5,85 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Clap Access Professional</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <style>
-        :root { --main-blue: #007AFF; --bg-dark: #000000; --panel-bg: #111111; }
-        body { margin: 0; background: var(--bg-dark); color: #fff; font-family: -apple-system, system-ui, sans-serif; overflow: hidden; height: 100vh; }
+        :root { 
+            --main-blue: #007AFF; 
+            --bg-dark: #000000; 
+            --panel-bg: #111111; 
+        }
+        body { 
+            margin: 0; 
+            background: var(--bg-dark); 
+            color: #fff; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            overflow: hidden; 
+            height: 100vh; 
+        }
         
-        /* Layout Architecture */
         .app-wrapper { display: flex; flex-direction: column; height: 100vh; }
-        
-        .header { padding: 15px; text-align: center; background: var(--panel-bg); border-bottom: 1px solid #222; }
-        .header h1 { margin: 0; font-size: 16px; letter-spacing: 1px; color: var(--main-blue); }
-
-        .scanner-viewport { position: relative; flex: 1; background: #050505; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        #video-stream { width: 100%; height: 100%; object-fit: cover; }
-
-        /* Scanning Overlay */
-        .scan-mask { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-        .focus-area { width: 260px; height: 260px; border: 2px solid rgba(255,255,255,0.1); border-radius: 40px; position: relative; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); }
-        .corner { position: absolute; width: 30px; height: 30px; border: 4px solid var(--main-blue); }
-        .tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 15px; }
-        .tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 15px; }
-        .bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 15px; }
-        .br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 15px; }
-        
-        .scan-anim-line { position: absolute; width: 90%; left: 5%; height: 3px; background: var(--main-blue); box-shadow: 0 0 20px var(--main-blue); animation: scan-loop 2.5s infinite ease-in-out; }
-        @keyframes scan-loop { 0%, 100% { top: 10%; } 50% { top: 90%; } }
-
-        .control-panel { padding: 30px 20px; background: var(--panel-bg); text-align: center; border-top: 1px solid #222; }
-        .status-indicator { font-size: 13px; color: #666; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1.5px; }
-        
-        .action-btn { background: var(--main-blue); color: #fff; border: none; padding: 18px 0; width: 100%; border-radius: 16px; font-size: 16px; font-weight: 700; transition: transform 0.2s; box-shadow: 0 4px 15px rgba(0,122,255,0.4); }
-        .action-btn:active { transform: scale(0.96); }
-
-        /* Notification Modal */
-        #notification-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(10px); }
-        .modal-box { background: #1c1c1e; padding: 40px 30px; border-radius: 30px; width: 80%; text-align: center; border: 1px solid #333; }
-    </style>
-</head>
-<body>
-
-    <div class="app-wrapper">
-        <div class="header">
-            <h1>CLAP SYSTEM • SECURE SCAN</h1>
-        </div>
-
-        <div class="scanner-viewport">
-            <video id="video-stream" playsinline></video>
-            <div class="scan-mask">
-                <div class="focus-area">
-                    <div class="corner tl"></div><div class="corner tr"></div>
-                    <div class="corner bl"></div><div class="corner br"></div>
-                    <div class="scan-anim-line"></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="control-panel">
-            <div id="status-text" class="status-indicator">Запуск оптичного модуля...</div>
-            <button class="action-btn" onclick="requestCameraAccess()">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
-        </div>
-    </div>
-
-    <div id="notification-overlay">
-        <div class="modal-box">
-            <h2 id="modal-title">ОБРОБКА...</h2>
-            <p id="modal-body" style="color: #888;">Дані передаються в Telegram</p>
-        </div>
-    </div>
-
-    <script>
-        /**
-         * CORE SCANNING ENGINE
-         * Розроблено для інтеграції з Telegram WebApp API
-         */
-        const telegramApp = window.Telegram.WebApp;
-        telegramApp.expand();
-        telegramApp.ready();
-
-        const qrReader = new ZXing.BrowserQRCodeReader();
-        let isProcessingScan = false;
-
-        async function requestCameraAccess() {
-            const statusLabel = document.getElementById('status-text');
-            const videoElem = document.getElementById('video-stream');
-            
-            try {
-                statusLabel.innerText = "Пошук пристроїв...";
-                const devices = await qrReader.listVideoInputDevices();
-                
-                // Інтелектуальний вибір задньої камери
-                const preferredCamera = devices.find(d => 
-                    d.label.toLowerCase().includes('back') || 
-                    d.label.toLowerCase().includes('задняя')
-                ) || devices[0];
-
-                if (!preferredCamera) throw new Error("No camera found");
-
-                statusLabel.innerText = "Оптика активована";
-                
-                qrReader.decodeFromVideoDevice(preferredCamera.deviceId, 'video-stream', (result, error) => {
-                    if (result && !isProcessingScan) {
-                        isProcessingScan = true;
-                        handleSuccessfulScan(result.getText());
-                    }
-                });
-            } catch (err) {
-                statusLabel.innerText = "Помилка доступу до камери";
-                console.error("Camera error:", err);
-            }
+        .header { 
+            padding: 15px; 
+            text-align: center; 
+            background: var(--panel-bg); 
+            border-bottom: 1px solid #222; 
+        }
+        .header h1 { 
+            margin: 0; 
+            font-size: 17px; 
+            letter-spacing: 1px; 
+            color: var(--main-blue); 
+            font-weight: 600;
         }
 
-        function handleSuccessfulScan(content) {
-            const overlay = document.getElementById('notification-overlay');
-            const title = document.getElementById('modal-title');
-            
-            // Візуальний відгук
-            overlay.style.display = 'flex';
-            title.innerText = "КВИТОК ЗЧИТАНО";
-            
-            // Тактильний відгук (вібрація)
-            telegramApp.HapticFeedback.notificationOccurred('success');
-
-            // Передача даних у бот
-            // ВАЖЛИВО: Використовуємо затримку, щоб Telegram встиг обробити потік
-            setTimeout(() => {
-                telegramApp.sendData(content);
-                // Програма автоматично закриється після sendData
-            }, 500);
+        .scanner-viewport { 
+            position: relative; 
+            flex: 1; 
+            background: #050505; 
+            overflow: hidden; 
+        }
+        #video-stream { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
         }
 
-        // Автоматичний запуск при старті сторінки
-        window.addEventListener('DOMContentLoaded', requestCameraAccess);
-        
-        // Налаштування теми Telegram
-        document.documentElement.style.setProperty('--main-blue', telegramApp.themeParams.button_color || '#007AFF');
-    </script>
-</body>
-</html>
+        .scan-mask { 
+            position: absolute; 
+            inset: 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            pointer-events: none; 
+        }
+        .focus-area { 
+            width: 260px; 
+            height: 260px; 
+            border: 2px solid rgba(255,255,255,0.15); 
+            border-radius: 40px; 
+            position: relative; 
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.65); 
+        }
+        .corner { 
+            position: absolute; 
+            width: 40px; 
+            height: 40px; 
+            border: 5px solid var(--main-blue); 
+        }
+        .tl { top: -4px; left: -4px; border-right: 0; border-bottom: 0; border-top-left-radius: 20px; }
+        .tr { top: -4px; right: -4px; border-left: 0; border-bottom: 0; border-top-right-radius: 20px; }
+        .bl { bottom: -4px; left: -4px; border-right: 0; border-top: 0; border-bottom-left-radius: 20px; }
+        .br { bottom: -4px; right: -4px; border-left: 0; border-top: 0; border-bottom-right-radius: 20px; }
+
+        .scan-anim-line { 
+            position: absolute; 
+            width: 85%; 
+            left: 7.5%; 
+            height: 3px; 
+            background: var(--main-blue); 
+            box-shadow: 0 0 25px var(--main-blue); 
+            animation: scan-loop 2s infinite ease-in-out; 
+        }
+        @keyframes scan-loop { 
+            0%, 100% { top: 15%; } 
+            50% { top: 85
