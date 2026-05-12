@@ -3,87 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Access Professional</title>
+    <title>Clap Access Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <style>
-        :root { 
-            --main-blue: #007AFF; 
-            --bg-dark: #000000; 
-            --panel-bg: #111111; 
-        }
-        body { 
-            margin: 0; 
-            background: var(--bg-dark); 
-            color: #fff; 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-            overflow: hidden; 
-            height: 100vh; 
-        }
-        
-        .app-wrapper { display: flex; flex-direction: column; height: 100vh; }
-        .header { 
-            padding: 15px; 
-            text-align: center; 
-            background: var(--panel-bg); 
-            border-bottom: 1px solid #222; 
-        }
-        .header h1 { 
-            margin: 0; 
-            font-size: 17px; 
-            letter-spacing: 1px; 
-            color: var(--main-blue); 
-            font-weight: 600;
+        body { margin:0; background:#000; color:#fff; font-family:sans-serif; height:100vh; overflow:hidden; }
+        .header { padding:15px; text-align:center; background:#111; }
+        .scanner { position:relative; height:calc(100vh - 180px); background:#050505; }
+        video { width:100%; height:100%; object-fit:cover; }
+        .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+        .frame { width:260px; height:260px; border:3px solid #00FFAA; border-radius:20px; position:relative; box-shadow:0 0 0 9999px rgba(0,0,0,0.7); }
+        .status { padding:20px; text-align:center; background:#111; }
+        button { padding:18px; font-size:17px; width:90%; margin:10px auto; display:block; border:none; border-radius:12px; background:#007AFF; color:white; font-weight:bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header"><h2>CLAP SCANNER</h2></div>
+    
+    <div class="scanner">
+        <video id="video" playsinline autoplay></video>
+        <div class="overlay">
+            <div class="frame"></div>
+        </div>
+    </div>
+
+    <div class="status">
+        <div id="status">Запуск камери...</div>
+        <button onclick="startScanner()">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.ready();
+
+        const qrReader = new ZXing.BrowserQRCodeReader();
+        let isScanning = false;
+
+        async function startScanner() {
+            const status = document.getElementById('status');
+            status.textContent = "Запит доступу до камери...";
+
+            try {
+                const devices = await qrReader.listVideoInputDevices();
+                console.log("Камери знайдено:", devices);
+
+                const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || 
+                                                   d.label.toLowerCase().includes('задн')) || devices[0];
+
+                if (!backCamera) throw new Error("Камера не знайдена");
+
+                await qrReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, err) => {
+                    if (result && !isScanning) {
+                        isScanning = true;
+                        console.log("Знайдено:", result.getText());
+                        tg.HapticFeedback.notificationOccurred('success');
+                        tg.sendData(result.getText());
+                    }
+                });
+
+                status.textContent = "✅ Сканер активний";
+            } catch (err) {
+                console.error(err);
+                status.textContent = "❌ Помилка: " + err.message;
+            }
         }
 
-        .scanner-viewport { 
-            position: relative; 
-            flex: 1; 
-            background: #050505; 
-            overflow: hidden; 
-        }
-        #video-stream { 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-        }
-
-        .scan-mask { 
-            position: absolute; 
-            inset: 0; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            pointer-events: none; 
-        }
-        .focus-area { 
-            width: 260px; 
-            height: 260px; 
-            border: 2px solid rgba(255,255,255,0.15); 
-            border-radius: 40px; 
-            position: relative; 
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.65); 
-        }
-        .corner { 
-            position: absolute; 
-            width: 40px; 
-            height: 40px; 
-            border: 5px solid var(--main-blue); 
-        }
-        .tl { top: -4px; left: -4px; border-right: 0; border-bottom: 0; border-top-left-radius: 20px; }
-        .tr { top: -4px; right: -4px; border-left: 0; border-bottom: 0; border-top-right-radius: 20px; }
-        .bl { bottom: -4px; left: -4px; border-right: 0; border-top: 0; border-bottom-left-radius: 20px; }
-        .br { bottom: -4px; right: -4px; border-left: 0; border-top: 0; border-bottom-right-radius: 20px; }
-
-        .scan-anim-line { 
-            position: absolute; 
-            width: 85%; 
-            left: 7.5%; 
-            height: 3px; 
-            background: var(--main-blue); 
-            box-shadow: 0 0 25px var(--main-blue); 
-            animation: scan-loop 2s infinite ease-in-out; 
-        }
-        @keyframes scan-loop { 
-            0%, 100% { top: 15%; } 
-            50% { top: 85
+        // Автозапуск
+        window.onload = startScanner;
+    </script>
+</body>
+</html>
