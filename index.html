@@ -6,15 +6,15 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: white; overflow: hidden; }
-        #reader { width: 100vw; height: 70vh; background: #000; }
-        #info { padding: 20px; font-size: 20px; font-weight: bold; background: #111; }
-        .blink { animation: blinker 0.5s linear; }
-        @keyframes blinker { 50% { opacity: 0; } }
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: #fff; overflow: hidden; }
+        #reader { width: 100vw; height: 75vh; background: #000; }
+        #status-bar { padding: 15px; font-size: 18px; font-weight: bold; background: #111; border-bottom: 2px solid #3390ec; }
+        .flash { animation: flash-anim 0.3s; }
+        @keyframes flash-anim { from { background: #3390ec; } to { background: #111; } }
     </style>
 </head>
 <body>
-    <div id="info">ГОТОВИЙ ДО СКАНУВАННЯ</div>
+    <div id="status-bar">ОЧІКУВАННЯ КВИТКА</div>
     <div id="reader"></div>
 
     <script>
@@ -24,16 +24,22 @@
         const botToken = '8798649772:AAGIAKWXsgfheC4dw5JhFcGF0EotWFYoaZE';
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '5035520641';
         
-        let isLock = false;
+        let lastCode = "";
+        let lastTime = 0;
         const scanner = new Html5Qrcode("reader");
 
         async function onScan(decodedText) {
-            if (isLock) return;
-            isLock = true;
+            const now = Date.now();
+            // Ігноруємо дублікати, якщо минуло менше 5 секунд для ТОГО Ж коду
+            if (decodedText === lastCode && (now - lastTime) < 5000) return;
+            
+            lastCode = decodedText;
+            lastTime = now;
 
-            // Візуальний відгук (мигтіння)
-            document.getElementById('info').innerText = "ОБРОБКА... ⏳";
-            document.body.classList.add('blink');
+            const bar = document.getElementById('status-bar');
+            bar.innerText = "ОБРОБКА...";
+            bar.classList.add('flash');
+            setTimeout(() => bar.classList.remove('flash'), 300);
 
             try {
                 await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -44,20 +50,15 @@
                         text: `CHECK:${decodedText}`
                     })
                 });
-                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
             } catch (e) {
-                console.error(e);
+                bar.innerText = "ПОМИЛКА МЕРЕЖІ";
             }
 
-            // Через 2 секунди сканер знову готовий до будь-якого коду
-            setTimeout(() => {
-                document.body.classList.remove('blink');
-                document.getElementById('info').innerText = "СКАНУЙТЕ НАСТУПНИЙ";
-                isLock = false;
-            }, 2000);
+            setTimeout(() => { bar.innerText = "СКАНУЙТЕ НАСТУПНИЙ"; }, 1500);
         }
 
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScan);
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 260 }, onScan);
     </script>
 </body>
 </html>
