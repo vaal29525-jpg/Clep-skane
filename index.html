@@ -3,75 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Access Scanner</title>
+    <title>Clap Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
     <style>
-        body { margin:0; background:#000; color:#fff; font-family:sans-serif; height:100vh; overflow:hidden; }
-        .header { padding:15px; text-align:center; background:#111; }
-        .scanner { position:relative; height:calc(100vh - 180px); background:#050505; }
-        video { width:100%; height:100%; object-fit:cover; }
-        .overlay { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
-        .frame { width:260px; height:260px; border:3px solid #00FFAA; border-radius:20px; position:relative; box-shadow:0 0 0 9999px rgba(0,0,0,0.7); }
-        .status { padding:20px; text-align:center; background:#111; }
-        button { padding:18px; font-size:17px; width:90%; margin:10px auto; display:block; border:none; border-radius:12px; background:#007AFF; color:white; font-weight:bold; }
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background: #000; 
+            color: white; 
+            font-family: sans-serif; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        #video { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            text-align: center;
+            z-index: 100;
+            background: rgba(0,0,0,0.6);
+            padding: 10px;
+        }
+        button {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            font-size: 16px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
 
-    <div class="header"><h2>CLAP SCANNER</h2></div>
-    
-    <div class="scanner">
-        <video id="video" playsinline autoplay></video>
-        <div class="overlay">
-            <div class="frame"></div>
-        </div>
+    <div class="info">
+        <h3>CLAP SCANNER</h3>
+        <p id="status">Запуск...</p>
     </div>
 
-    <div class="status">
-        <div id="status">Запуск камери...</div>
-        <button onclick="startScanner()">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
-    </div>
+    <video id="video" playsinline autoplay muted></video>
+    
+    <button onclick="startCamera()">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
 
-        const qrReader = new ZXing.BrowserQRCodeReader();
-        let isScanning = false;
+        let qrReader = null;
 
-        async function startScanner() {
+        async function startCamera() {
             const status = document.getElementById('status');
+            const video = document.getElementById('video');
+
             status.textContent = "Запит доступу до камери...";
 
             try {
+                if (qrReader) qrReader.reset();
+
+                qrReader = new ZXing.BrowserQRCodeReader();
+
                 const devices = await qrReader.listVideoInputDevices();
-                console.log("Камери знайдено:", devices);
+                console.log("Знайдені камери:", devices);
 
-                const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || 
-                                                   d.label.toLowerCase().includes('задн')) || devices[0];
+                const preferred = devices.find(d => 
+                    d.label.toLowerCase().includes("back") || 
+                    d.label.toLowerCase().includes("зад")
+                ) || devices[0];
 
-                if (!backCamera) throw new Error("Камера не знайдена");
+                status.textContent = "Камера знайдена. Запуск...";
 
-                await qrReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, err) => {
-                    if (result && !isScanning) {
-                        isScanning = true;
-                        console.log("Знайдено:", result.getText());
-                        tg.HapticFeedback.notificationOccurred('success');
-                        tg.sendData(result.getText());
+                await qrReader.decodeFromVideoDevice(
+                    preferred.deviceId, 
+                    'video', 
+                    (result) => {
+                        if (result) {
+                            console.log("QR Code:", result.getText());
+                            tg.HapticFeedback.notificationOccurred('success');
+                            tg.sendData(result.getText());
+                            status.textContent = "Код зчитано!";
+                        }
                     }
-                });
+                );
 
-                status.textContent = "✅ Сканер активний";
+                status.textContent = "✅ Сканер працює";
+
             } catch (err) {
-                console.error(err);
-                status.textContent = "❌ Помилка: " + err.message;
+                console.error("Помилка:", err);
+                status.textContent = "❌ " + err.message;
             }
         }
 
         // Автозапуск
-        window.onload = startScanner;
+        window.onload = () => {
+            startCamera();
+        };
     </script>
 </body>
 </html>
