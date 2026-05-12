@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html>
 <head>
@@ -7,51 +6,72 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; transition: background 0.3s; background: #000; color: white; }
-        #reader { width: 100vw; height: 70vh; }
-        #result-box { padding: 20px; font-size: 20px; font-weight: bold; }
-        .green { background: #006400 !important; } /* Темно-зелений */
-        .red { background: #8b0000 !important; }   /* Темно-червоний */
+        body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: white; transition: 0.3s; overflow: hidden; }
+        #reader { width: 100vw; height: 70vh; background: #000; }
+        #info { padding: 20px; font-size: 22px; font-weight: bold; text-transform: uppercase; }
+        .success { background: #006400 !important; } /* Зелений - відправлено */
+        .scanned-already { background: #8b0000 !important; } /* Червоний - повтор */
     </style>
 </head>
 <body>
-    <div id="result-box">ПІДНЕСІТЬ КВИТОК</div>
+    <div id="info">СКАНУЙТЕ КВИТОК</div>
     <div id="reader"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const resBox = document.getElementById('result-box');
-        let isScanning = true;
-
+        
+        const botToken = '8798649772:AAGIAKWXsgfheC4dw5JhFcGF0EotWFYoaZE';
+        const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '5035520641';
+        
+        let lastCode = "";
+        let isProcessing = false;
         const scanner = new Html5Qrcode("reader");
 
-        function onScan(decodedText) {
-            if (!isScanning) return;
-            isScanning = false; // Пауза, щоб не сканувати один код 100 разів
-
-            // Відправляємо дані боту ТАК, щоб вікно НЕ закрилося
-            // Для цього використовуємо спеціальний метод
-            tg.sendData(decodedText); 
+        async function onScan(decodedText) {
+            if (isProcessing) return;
             
-            // Оскільки tg.sendData все одно може закрити вікно в деяких версіях, 
-            // ми додамо візуальний ефект тут для тесту:
-            resBox.innerText = "ОБРОБКА: " + decodedText;
+            // Якщо цей квиток щойно сканували - миттєво червоний екран (захист від копій)
+            if (decodedText === lastCode) {
+                document.body.className = "scanned-already";
+                document.getElementById('info').innerText = "ПОВТОРНИЙ СКАН! ❌";
+                return;
+            }
+
+            isProcessing = true;
+            lastCode = decodedText;
+
+            try {
+                // Відправляємо в бот
+                await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        chat_id: userId,
+                        text: `CHECK:${decodedText}`
+                    })
+                });
+
+                document.body.className = "success";
+                document.getElementById('info').innerText = "ОБРОБКА... ⏳";
+                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+            } catch (e) {
+                document.getElementById('info').innerText = "ПОМИЛКА МЕРЕЖІ";
+            }
+
+            // Через 2 секунди дозволяємо сканувати наступний інший квиток
+            setTimeout(() => {
+                document.body.className = "";
+                document.getElementById('info').innerText = "ГОТОВИЙ";
+                isProcessing = false;
+            }, 2000);
+            
+            // Повністю забуваємо код через 10 секунд, щоб можна було перевірити знову за потреби
+            setTimeout(() => { lastCode = ""; }, 10000);
         }
 
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScan);
-
-        // Цей скрипт слухає "відповідь" від бота (якщо ми захочемо докрутити логіку пізніше)
-        // Але зараз ми просто зробимо паузу 2 секунди і скинемо колір
-        setInterval(() => {
-            if (!isScanning) {
-                setTimeout(() => {
-                    document.body.className = "";
-                    resBox.innerText = "ГОТОВИЙ ДО НАСТУПНОГО";
-                    isScanning = true;
-                }, 2000);
-            }
-        }, 500);
+        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 260 }, onScan);
     </script>
 </body>
 </html>
