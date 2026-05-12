@@ -9,12 +9,11 @@
         body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: #fff; overflow: hidden; }
         #reader { width: 100vw; height: 75vh; background: #000; }
         #status-bar { padding: 15px; font-size: 18px; font-weight: bold; background: #111; border-bottom: 2px solid #3390ec; }
-        .flash { animation: flash-anim 0.3s; }
-        @keyframes flash-anim { from { background: #3390ec; } to { background: #111; } }
+        .success-flash { background: #00ff00 !important; color: #000; }
     </style>
 </head>
 <body>
-    <div id="status-bar">ОЧІКУВАННЯ КВИТКА</div>
+    <div id="status-bar">ГОТОВИЙ ДО СКАНУВАННЯ</div>
     <div id="reader"></div>
 
     <script>
@@ -24,22 +23,16 @@
         const botToken = '8798649772:AAGIAKWXsgfheC4dw5JhFcGF0EotWFYoaZE';
         const userId = tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '5035520641';
         
-        let lastCode = "";
-        let lastTime = 0;
+        let scanningActive = true;
         const scanner = new Html5Qrcode("reader");
 
         async function onScan(decodedText) {
-            const now = Date.now();
-            // Ігноруємо дублікати, якщо минуло менше 5 секунд для ТОГО Ж коду
-            if (decodedText === lastCode && (now - lastTime) < 5000) return;
-            
-            lastCode = decodedText;
-            lastTime = now;
+            if (!scanningActive) return;
+            scanningActive = false; // Блокуємо камеру до завершення обробки
 
             const bar = document.getElementById('status-bar');
-            bar.innerText = "ОБРОБКА...";
-            bar.classList.add('flash');
-            setTimeout(() => bar.classList.remove('flash'), 300);
+            bar.innerText = "ОБРОБКА... ⏳";
+            bar.classList.add('success-flash');
 
             try {
                 await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -50,12 +43,17 @@
                         text: `CHECK:${decodedText}`
                     })
                 });
-                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             } catch (e) {
-                bar.innerText = "ПОМИЛКА МЕРЕЖІ";
+                bar.innerText = "ПОМИЛКА ЗВ'ЯЗКУ";
             }
 
-            setTimeout(() => { bar.innerText = "СКАНУЙТЕ НАСТУПНИЙ"; }, 1500);
+            // Пауза 2.5 секунди перед наступним квитком, щоб база встигла оновитися
+            setTimeout(() => {
+                bar.classList.remove('success-flash');
+                bar.innerText = "ШУКАЮ НАСТУПНИЙ...";
+                scanningActive = true;
+            }, 2500);
         }
 
         scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 260 }, onScan);
