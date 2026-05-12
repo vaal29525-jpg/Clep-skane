@@ -1,42 +1,66 @@
 <!DOCTYPE html>
-<html>
+<html lang="uk">
 <head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Scanner Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh; }
-        #video { width:100%; height:100%; object-fit:cover; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        #video { width: 100%; height: 100vh; object-fit: cover; }
+        .overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; pointer-events: none; }
+        .box { width: 250px; height: 250px; border: 4px solid #fff; border-radius: 40px; box-shadow: 0 0 0 1000px rgba(0,0,0,0.6); position: relative; }
+        .line { position: absolute; width: 100%; height: 3px; background: #007aff; top: 0; animation: move 2s infinite linear; }
+        @keyframes move { 0%, 100% { top: 0; } 50% { top: 100%; } }
+        #msg { position: fixed; top: 15%; width: 80%; left: 10%; padding: 20px; border-radius: 20px; text-align: center; font-size: 1.2em; font-weight: bold; display: none; z-index: 100; }
     </style>
 </head>
 <body>
     <video id="video"></video>
+    <div class="overlay"><div class="box"><div class="line"></div></div></div>
+    <div id="msg"></div>
+
     <script>
         const tg = window.Telegram.WebApp;
-        tg.ready();
         tg.expand();
-
+        
         const codeReader = new ZXing.BrowserQRCodeReader();
+        const msgBox = document.getElementById('msg');
+        let isLock = false;
 
-        async function initCamera() {
-            try {
-                // Примусовий запит дозволів перед запуском сканера
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-                stream.getTracks().forEach(track => track.stop()); // Зупиняємо технічний потік
-
-                // Запуск бібліотеки після успішного дозволу
-                codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
-                    if (result) {
-                        tg.sendData(result.getText()); // Відправляємо і закриваємо
-                        window.close(); 
-                    }
-                });
-            } catch (err) {
-                alert("Помилка доступу: " + err.message);
-            }
+        function showResult(text, color) {
+            msgBox.innerText = text;
+            msgBox.style.background = color;
+            msgBox.style.display = 'block';
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(color.includes('28') ? 'success' : 'error');
+            
+            setTimeout(() => {
+                msgBox.style.display = 'none';
+                isLock = false;
+            }, 3000); // 3 секунди паузи перед наступним скануванням
         }
 
-        initCamera();
+        async function start() {
+            // Запитуємо дозвіл на камеру професійно
+            const constraints = { video: { facingMode: "environment" } };
+            
+            codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
+                if (result && !isLock) {
+                    isLock = true;
+                    const code = result.getText();
+                    
+                    // Відправляємо код боту через спеціальну функцію Telegram
+                    // Бот отримає повідомлення і сам перевірить по базі
+                    tg.sendData(code); 
+                    
+                    // Показуємо, що код зчитано, і чекаємо 3 сек
+                    showResult("ПЕРЕВІРКА: " + code, "#007aff");
+                }
+            });
+        }
+
+        start().catch(e => alert("Помилка: " + e));
     </script>
 </body>
 </html>
