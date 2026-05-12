@@ -3,142 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Clap Scanner Elite</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        :root { --accent: #007aff; --bg: #000; --panel: rgba(25, 25, 25, 0.85); }
-        body { margin: 0; padding: 0; background: var(--bg); font-family: -apple-system, system-ui, sans-serif; color: #fff; overflow: hidden; }
-        
-        #scanner-container { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
-        #video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
-        
-        .ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
-        .viewport { width: 260px; height: 260px; border: 2px solid rgba(255,255,255,0.4); border-radius: 45px; position: relative; box-shadow: 0 0 0 1000px rgba(0,0,0,0.65); }
-        .laser { position: absolute; width: 90%; height: 2px; background: var(--accent); left: 5%; top: 50%; box-shadow: 0 0 15px var(--accent); animation: moveLaser 2.5s infinite ease-in-out; }
-        
-        @keyframes moveLaser { 0%, 100% { top: 10%; opacity: 0.3; } 50% { top: 90%; opacity: 1; } }
-
-        .info-panel { position: absolute; bottom: 50px; width: 85%; background: var(--panel); backdrop-filter: blur(15px); padding: 20px; border-radius: 25px; border: 1px solid rgba(255,255,255,0.1); pointer-events: auto; }
-        .status-msg { font-size: 18px; font-weight: 600; text-align: center; margin-bottom: 5px; }
-        .sub-msg { font-size: 13px; text-align: center; opacity: 0.7; }
-
-        .flash-btn { position: absolute; top: 40px; right: 20px; width: 50px; height: 50px; background: var(--panel); border-radius: 50%; display: flex; align-items: center; justify-content: center; pointer-events: auto; border: 1px solid rgba(255,255,255,0.2); }
-        
-        .result-screen { position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center; flex-direction: column; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
+        #video { width: 100%; height: 100vh; object-fit: cover; filter: contrast(1.1) brightness(1.1); }
+        .ui { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
+        .view-box { width: 280px; height: 280px; border: 2px solid rgba(255,255,255,0.4); border-radius: 50px; position: relative; box-shadow: 0 0 0 1000px rgba(0,0,0,0.7); }
+        .scan-line { position: absolute; width: 100%; height: 2px; background: #007aff; top: 0; animation: anim 2.5s infinite; box-shadow: 0 0 15px #007aff; }
+        @keyframes anim { 0%, 100% { top: 5%; } 50% { top: 95%; } }
+        .footer { position: fixed; bottom: 40px; width: 80%; background: rgba(30,30,30,0.9); padding: 15px; border-radius: 20px; text-align: center; backdrop-filter: blur(10px); }
+        #result-popup { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: none; align-items: center; justify-content: center; z-index: 100; font-weight: bold; font-size: 24px; text-align: center; padding: 20px; }
     </style>
 </head>
 <body>
-    <div id="scanner-container">
-        <video id="video" playsinline></video>
-        <div class="ui-layer">
-            <div class="viewport"><div class="laser"></div></div>
-        </div>
-        
-        <div class="flash-btn" onclick="toggleFlash()">🔦</div>
-        
-        <div class="info-panel">
-            <div id="status" class="status-msg">Очікування QR...</div>
-            <div id="details" class="sub-msg">Забезпечте гарне освітлення</div>
-            <button onclick="location.reload()" style="width:100%; margin-top:15px; background:var(--accent); border:none; color:#fff; padding:10px; border-radius:12px; font-weight:600;">ПЕРЕЗАПУСТИТИ КАМЕРУ</button>
-        </div>
+    <video id="video"></video>
+    <div class="ui">
+        <div class="view-box"><div class="scan-line"></div></div>
+        <div class="footer">Наведіть камеру на QR-код</div>
     </div>
-
-    <div id="result-screen" class="result-screen">
-        <h1 id="res-name">Ім'я</h1>
-        <p id="res-status">Статус</p>
-    </div>
+    <div id="result-popup"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.ready();
-
-        const video = document.getElementById('video');
-        const codeReader = new ZXing.BrowserQRCodeReader();
+        
         let guests = {};
-        let scanningActive = true;
+        let isActive = true;
+        const codeReader = new ZXing.BrowserQRCodeReader();
 
-        // Покращена ініціалізація бази
-        (function initData() {
+        // Завантаження бази
+        try {
+            const hash = window.location.hash.substring(1);
+            if(hash) guests = JSON.parse(atob(hash));
+        } catch(e) { console.error("Data error"); }
+
+        function showResult(title, msg, color) {
+            const pop = document.getElementById('result-popup');
+            pop.style.background = color;
+            pop.innerHTML = `<div>${title}<br><small>${msg}</small></div>`;
+            pop.style.display = 'flex';
+            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(color.includes('28') ? 'success' : 'error');
+            setTimeout(() => { pop.style.display = 'none'; isActive = true; }, 3000);
+        }
+
+        async function init() {
             try {
-                const raw = window.location.hash.substring(1);
-                if(raw) guests = JSON.parse(atob(raw));
-            } catch(e) { console.error("Data error"); }
-        })();
-
-        async function startScanner() {
-            try {
-                // Опції для максимально чіткої картинки
-                const constraints = {
-                    video: {
-                        facingMode: "environment",
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        focusMode: "continuous"
-                    }
-                };
-
+                const constraints = { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } };
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
+                document.getElementById('video').srcObject = stream;
                 
-                // Налаштування бібліотеки для підвищеної чутливості
+                // Налаштування "Harder Mode" для ZXing
                 const hints = new Map();
                 hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
-                hints.set(ZXing.DecodeHintType.TRY_HARDER, true); // КЛЮЧОВИЙ ПАРАМЕТР
+                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
-                codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
-                    if (result && scanningActive) {
-                        handleDiscovery(result.getText());
+                codeReader.decodeFromVideoDevice(undefined, 'video', (result) => {
+                    if (result && isActive) {
+                        isActive = false;
+                        const code = result.getText();
+                        const g = guests[code];
+                        if(g) {
+                            if(g.s === 0) {
+                                g.s = 1;
+                                showResult("✅ " + g.n, "ПРОХОДЬТЕ", "#28a745");
+                                tg.sendData("USED:" + code);
+                            } else {
+                                showResult("❌ " + g.n, "ВЖЕ БУВ", "#dc3545");
+                            }
+                        } else {
+                            showResult("⚠️ НЕВІДОМИЙ", "КВИТОК НЕ В БАЗІ", "#ff9500");
+                        }
                     }
                 });
-            } catch (err) {
-                document.getElementById('status').innerText = "Помилка камери!";
-                console.error(err);
-            }
+            } catch (err) { alert("Камера недоступна!"); }
         }
 
-        function handleDiscovery(code) {
-            scanningActive = false;
-            const guest = guests[code];
-            const screen = document.getElementById('result-screen');
-            
-            if(guest) {
-                if(guest.s === 0) {
-                    guest.s = 1;
-                    showScreen("✅ " + guest.n, "ПРОХОДЬТЕ", "#28a745");
-                    tg.sendData("USED:" + code);
-                } else {
-                    showScreen("❌ " + guest.n, "ВЖЕ ВИКОРИСТАНО", "#dc3545");
-                }
-            } else {
-                showScreen("⚠️ НЕВІДОМИЙ", "КВИТОК НЕ В БАЗІ", "#ff9500");
-            }
-        }
-
-        function showScreen(title, sub, color) {
-            const s = document.getElementById('result-screen');
-            s.style.display = 'flex';
-            s.style.background = color;
-            document.getElementById('res-name').innerText = title;
-            document.getElementById('res-status').innerText = sub;
-            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(color.includes('28') ? 'success' : 'error');
-            
-            setTimeout(() => {
-                s.style.display = 'none';
-                scanningActive = true;
-            }, 3500);
-        }
-
-        function toggleFlash() {
-            const track = video.srcObject.getVideoTracks()[0];
-            const capabilities = track.getCapabilities();
-            if (capabilities.torch) {
-                track.applyConstraints({ advanced: [{ torch: !track.getConstraints().torch }] });
-            }
-        }
-
-        window.onload = startScanner;
+        window.addEventListener('load', init);
     </script>
 </body>
 </html>
