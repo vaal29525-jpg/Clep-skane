@@ -7,65 +7,39 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: sans-serif; text-align: center; margin: 0; background: #000; color: #fff; }
-        #reader { width: 100vw; height: 70vh; }
-        #res-box { height: 30vh; display: flex; flex-direction: column; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; transition: 0.3s; }
-        .welcome { background: #28a745; } /* Зелений */
-        .already { background: #dc3545; }  /* Червоний */
-        .none { background: #ffc107; color: #000; } /* Жовтий */
+        #reader { width: 100vw; height: 75vh; background: #000; }
+        #status { padding: 15px; font-size: 18px; background: #222; color: #0088cc; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="status">ЗАКРІПІТЬ БОТА ТА СКАНУЙТЕ</div>
     <div id="reader"></div>
-    <div id="res-box">ПРИГОТУЙТЕ КВИТОК</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const box = document.getElementById('res-box');
-        let isBusy = false;
-
-        // ВАЖЛИВО: Перевір свій токен тут ще раз
-        const botToken = '8798649772:AAGIAKWXsgfheC4dw5JhFcGF0EotWFYoaZE';
-
+        
+        let isScanning = true;
         const scanner = new Html5Qrcode("reader");
 
-        async function onScan(code) {
-            if (isBusy) return;
-            isBusy = true;
+        function onScanSuccess(decodedText) {
+            if (!isScanning) return;
+            isScanning = false;
+
+            document.getElementById('status').innerText = "ОБРОБКА...";
             
-            box.innerText = "ПЕРЕВІРКА...";
-            box.className = "";
+            // Відправляємо дані напряму через Telegram Bridge
+            tg.sendData(`SCAN:${decodedText}`);
+            
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
 
-            try {
-                // Відправляємо боту команду спеціального формату
-                const resp = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        chat_id: tg.initDataUnsafe.user.id,
-                        text: `SCAN:${code}` // Змінили на SCAN для нового обробника
-                    })
-                });
-
-                // Ефект вібрації
-                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-                
-                box.innerText = "ВІДПРАВЛЕНО! ДИВИСЬ ЧАТ";
-                
-                // Чекаємо 2 секунди перед наступним гостем
-                setTimeout(() => {
-                    box.innerText = "СКАНУЙТЕ НАСТУПНИЙ";
-                    box.className = "";
-                    isBusy = false;
-                }, 2000);
-
-            } catch (e) {
-                box.innerText = "ПОМИЛКА МЕРЕЖІ";
-                isBusy = false;
-            }
+            setTimeout(() => {
+                document.getElementById('status').innerText = "ГОТОВИЙ ДО НАСТУПНОГО";
+                isScanning = true;
+            }, 2500);
         }
 
-        scanner.start({ facingMode: "environment" }, { fps: 20, qrbox: 250 }, onScan);
+        scanner.start({ facingMode: "environment" }, { fps: 25, qrbox: 250 }, onScanSuccess);
     </script>
 </body>
 </html>
