@@ -3,57 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Scanner Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { font-family: sans-serif; background: #000; color: #fff; margin: 0; overflow: hidden; }
-        video { width: 100vw; height: 100vh; object-fit: cover; }
-        #overlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            display: none; flex-direction: column; justify-content: center; 
-            align-items: center; z-index: 10; font-size: 30px; font-weight: bold; 
-            text-align: center; padding: 20px; box-sizing: border-box;
-        }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #000; color: #fff; margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; }
+        #video { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 1; }
+        .overlay-ui { position: relative; z-index: 2; width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; pointer-events: none; }
+        .scanner-target { width: 260px; height: 260px; border: 2px solid rgba(255, 255, 255, 0.4); border-radius: 40px; background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(2px); position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; }
+        .scanner-target::after { content: ''; width: 100%; height: 2px; background: rgba(255, 255, 255, 0.8); position: absolute; animation: scan 2s infinite linear; }
+        @keyframes scan { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+        #status-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: none; flex-direction: column; align-items: center; justify-content: center; font-size: 28px; font-weight: bold; text-align: center; }
+        .hint { position: absolute; bottom: 40px; background: rgba(0,0,0,0.6); padding: 10px 20px; border-radius: 20px; font-size: 14px; color: #ccc; }
     </style>
 </head>
 <body>
     <video id="video"></video>
-    <div id="overlay"></div>
+    
+    <div class="overlay-ui">
+        <div class="scanner-target"></div>
+        <div class="hint">Наведіть камеру на QR-код</div>
+    </div>
+
+    <div id="status-screen"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        tg.ready();
 
         const codeReader = new ZXing.BrowserQRCodeReader();
-        const overlay = document.getElementById('overlay');
-        let isPaused = false;
+        const videoElement = document.getElementById('video');
+        const statusScreen = document.getElementById('status-screen');
+        let isProcessing = false;
 
-        function showResult(text, color) {
-            overlay.style.display = 'flex';
-            overlay.style.backgroundColor = color;
-            overlay.innerHTML = text;
-            
-            // Вібрація (якщо підтримується пристроєм)
+        function showUIFeedback(message, color) {
+            statusScreen.style.display = 'flex';
+            statusScreen.style.backgroundColor = color;
+            statusScreen.innerHTML = message;
             if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
             
             setTimeout(() => {
-                overlay.style.display = 'none';
-                isPaused = false;
-            }, 2000); // Екран зникає через 2 секунди
+                statusScreen.style.display = 'none';
+                isProcessing = false;
+            }, 2000);
         }
 
-        codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
-            if (result && !isPaused) {
-                isPaused = true;
-                const code = result.getText();
+        async function startScanner() {
+            try {
+                const videoInputDevices = await codeReader.listVideoInputDevices();
+                // Шукаємо задню камеру
+                const selectedDeviceId = videoInputDevices.find(device => device.label.toLowerCase().includes('back'))?.deviceId || videoInputDevices[0].deviceId;
                 
-                // Відправляємо код боту
-                tg.sendData("CHECK:" + code);
-                
-                // Показуємо той самий "прикольний" екран
-                showResult("ОБРОБКА...<br><span style='font-size:20px'>Дивіться результат у чаті</span>", "#3390ec");
+                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                    if (result && !isProcessing) {
+                        isProcessing = true;
+                        const code = result.getText();
+                        
+                        // Відправка даних боту
+                        tg.sendData("CHECK:" + code);
+                        
+                        // Гарний візуальний ефект
+                        showUIFeedback("ЗЧИТАНО!<br><span style='font-size:18px; font-weight:normal;'>Перевірка в Telegram...</span>", "rgba(51, 144, 236, 0.95)");
+                    }
+                });
+            } catch (error) {
+                console.error(error);
+                showUIFeedback("ПОМИЛКА КАМЕРИ", "#e53935");
             }
-        });
+        }
+
+        startScanner();
     </script>
 </body>
 </html>
