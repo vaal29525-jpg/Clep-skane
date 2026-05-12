@@ -3,84 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Clap Scanner Elite</title>
+    <title>Clap Control Pro Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; overflow: hidden; }
-        #video { width: 100%; height: 100vh; object-fit: cover; filter: contrast(1.1) brightness(1.1); }
-        .ui { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 10; }
-        .view-box { width: 280px; height: 280px; border: 2px solid rgba(255,255,255,0.4); border-radius: 50px; position: relative; box-shadow: 0 0 0 1000px rgba(0,0,0,0.7); }
-        .scan-line { position: absolute; width: 100%; height: 2px; background: #007aff; top: 0; animation: anim 2.5s infinite; box-shadow: 0 0 15px #007aff; }
-        @keyframes anim { 0%, 100% { top: 5%; } 50% { top: 95%; } }
-        .footer { position: fixed; bottom: 40px; width: 80%; background: rgba(30,30,30,0.9); padding: 15px; border-radius: 20px; text-align: center; backdrop-filter: blur(10px); }
-        #result-popup { position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: none; align-items: center; justify-content: center; z-index: 100; font-weight: bold; font-size: 24px; text-align: center; padding: 20px; }
+        :root { --main-blue: #007aff; --main-green: #28a745; --main-red: #dc3545; }
+        body { margin: 0; padding: 0; background: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; height: 100vh; }
+        
+        #video-preview { width: 100%; height: 100vh; object-fit: cover; position: absolute; top: 0; left: 0; }
+        
+        .overlay-ui { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
+        .scanner-window { width: 270px; height: 270px; border: 2px solid rgba(255,255,255,0.4); border-radius: 50px; position: relative; box-shadow: 0 0 0 2000px rgba(0,0,0,0.7); }
+        .scanner-window::after { content: ''; position: absolute; width: 90%; left: 5%; height: 2px; background: var(--main-blue); top: 0; animation: scanLine 2s infinite ease-in-out; box-shadow: 0 0 15px var(--main-blue); }
+        
+        @keyframes scanLine { 0%, 100% { top: 10%; opacity: 0.3; } 50% { top: 90%; opacity: 1; } }
+
+        .control-panel { position: fixed; bottom: 50px; width: 85%; background: rgba(30,30,30,0.85); backdrop-filter: blur(20px); padding: 20px; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1); pointer-events: auto; }
+        .status-txt { text-align: center; font-size: 18px; font-weight: 600; margin-bottom: 5px; }
+        .sub-txt { text-align: center; font-size: 13px; opacity: 0.6; }
+
+        .fullscreen-result { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 100; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .res-icon { font-size: 80px; margin-bottom: 20px; }
+        .res-name { font-size: 28px; font-weight: bold; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <video id="video"></video>
-    <div class="ui">
-        <div class="view-box"><div class="scan-line"></div></div>
-        <div class="footer">Наведіть камеру на QR-код</div>
+    <video id="video-preview" playsinline></video>
+    
+    <div class="overlay-ui">
+        <div class="scanner-window"></div>
+        <div class="control-panel">
+            <div id="status-label" class="status-txt">Очікування QR-коду...</div>
+            <div id="detail-label" class="sub-txt">Тримайте телефон паралельно квитку</div>
+            <button onclick="location.reload()" style="width:100%; margin-top:15px; background:var(--main-blue); border:none; color:white; padding:12px; border-radius:15px; font-weight:bold;">ОНОВИТИ КАМЕРУ</button>
+        </div>
     </div>
-    <div id="result-popup"></div>
+
+    <div id="result-overlay" class="fullscreen-result">
+        <div class="res-icon" id="res-icon"></div>
+        <div class="res-name" id="res-name">Гість</div>
+        <div style="font-size: 20px;" id="res-msg">Статус</div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        
-        let guests = {};
-        let isActive = true;
+        tg.ready();
+
+        const video = document.getElementById('video-preview');
         const codeReader = new ZXing.BrowserQRCodeReader();
+        let guestData = {};
+        let isProcessing = false;
 
-        // Завантаження бази
-        try {
-            const hash = window.location.hash.substring(1);
-            if(hash) guests = JSON.parse(atob(hash));
-        } catch(e) { console.error("Data error"); }
-
-        function showResult(title, msg, color) {
-            const pop = document.getElementById('result-popup');
-            pop.style.background = color;
-            pop.innerHTML = `<div>${title}<br><small>${msg}</small></div>`;
-            pop.style.display = 'flex';
-            if(tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(color.includes('28') ? 'success' : 'error');
-            setTimeout(() => { pop.style.display = 'none'; isActive = true; }, 3000);
-        }
-
-        async function init() {
+        // Ініціалізація бази гостей з URL-хешу
+        (function bootstrap() {
             try {
-                const constraints = { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } };
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                document.getElementById('video').srcObject = stream;
-                
-                // Налаштування "Harder Mode" для ZXing
-                const hints = new Map();
-                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
-                hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+                const rawHash = window.location.hash.substring(1);
+                if (rawHash) {
+                    guestData = JSON.parse(atob(rawHash));
+                }
+            } catch (err) { console.error("Data decode error", err); }
+        })();
 
-                codeReader.decodeFromVideoDevice(undefined, 'video', (result) => {
-                    if (result && isActive) {
-                        isActive = false;
-                        const code = result.getText();
-                        const g = guests[code];
-                        if(g) {
-                            if(g.s === 0) {
-                                g.s = 1;
-                                showResult("✅ " + g.n, "ПРОХОДЬТЕ", "#28a745");
-                                tg.sendData("USED:" + code);
-                            } else {
-                                showResult("❌ " + g.n, "ВЖЕ БУВ", "#dc3545");
-                            }
-                        } else {
-                            showResult("⚠️ НЕВІДОМИЙ", "КВИТОК НЕ В БАЗІ", "#ff9500");
-                        }
+        async function startEngine() {
+            try {
+                const streamConstraints = {
+                    video: { 
+                        facingMode: "environment", 
+                        width: { ideal: 1280 }, 
+                        height: { ideal: 720 } 
+                    }
+                };
+                
+                const stream = await navigator.mediaDevices.getUserMedia(streamConstraints);
+                video.srcObject = stream;
+                video.setAttribute("playsinline", true);
+                await video.play();
+
+                // Налаштування для максимальної чутливості
+                const decodeHints = new Map();
+                decodeHints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+                codeReader.decodeFromVideoDevice(undefined, 'video-preview', (result) => {
+                    if (result && !isProcessing) {
+                        isProcessing = true;
+                        handleScan(result.getText());
                     }
                 });
-            } catch (err) { alert("Камера недоступна!"); }
+            } catch (e) {
+                document.getElementById('status-label').innerText = "Помилка камери!";
+                alert("Будь ласка, дозвольте доступ до камери в налаштуваннях.");
+            }
         }
 
-        window.addEventListener('load', init);
+        function handleScan(code) {
+            const guest = guestData[code];
+            const overlay = document.getElementById('result-overlay');
+            
+            if (guest) {
+                if (guest.s === 0) {
+                    guest.s = 1;
+                    triggerResult("✅", guest.n, "ПРОХОДЬТЕ", "var(--main-green)");
+                    tg.sendData("SCAN_SUCCESS:" + code);
+                } else {
+                    triggerResult("❌", guest.n, "ВЖЕ В ЗАЛІ", "var(--main-red)");
+                }
+            } else {
+                triggerResult("⚠️", "НЕВІДОМИЙ", "КВИТОК НЕ ЗНАЙДЕНО", "#ff9500");
+            }
+        }
+
+        function triggerResult(icon, name, msg, bgColor) {
+            const overlay = document.getElementById('result-overlay');
+            overlay.style.display = 'flex';
+            overlay.style.background = bgColor;
+            document.getElementById('res-icon').innerText = icon;
+            document.getElementById('res-name').innerText = name;
+            document.getElementById('res-msg').innerText = msg;
+            
+            if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred(icon === '✅' ? 'success' : 'error');
+
+            setTimeout(() => {
+                overlay.style.display = 'none';
+                isProcessing = false;
+            }, 3000);
+        }
+
+        window.onload = startEngine;
     </script>
 </body>
 </html>
