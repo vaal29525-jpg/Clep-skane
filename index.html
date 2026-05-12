@@ -3,66 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Clap Control System Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { font-family: sans-serif; background: #000; color: #fff; margin: 0; overflow: hidden; }
-        video { width: 100vw; height: 100vh; object-fit: cover; background: #000; }
-        #overlay { 
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            display: none; flex-direction: column; justify-content: center; 
-            align-items: center; z-index: 10; font-size: 24px; font-weight: bold; 
-            text-align: center; background: rgba(51, 144, 236, 0.9);
-        }
-        .scan-area {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 250px; height: 250px; border: 2px solid #fff; border-radius: 20px;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5); z-index: 5;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #000; color: #ffffff; margin: 0; padding: 0; overflow: hidden; height: 100vh; width: 100vw; }
+        #video-container { position: relative; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #000; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Рамка сканера */
+        .scanner-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .box { width: 260px; height: 260px; border: 2px solid rgba(255, 255, 255, 0.5); border-radius: 40px; position: relative; box-shadow: 0 0 0 5000px rgba(0, 0, 0, 0.5); }
+        .line { position: absolute; width: 100%; height: 3px; background: #3390ec; top: 0; left: 0; box-shadow: 0 0 15px #3390ec; animation: scanAnim 2s infinite ease-in-out; }
+        
+        @keyframes scanAnim { 0% { top: 0%; } 50% { top: 100%; } 100% { top: 0%; } }
+
+        /* Екрани статусів */
+        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #success-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(51, 144, 236, 0.95); z-index: 200; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3390ec; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .status-text { font-size: 22px; font-weight: bold; padding: 20px; }
     </style>
 </head>
 <body>
-    <video id="video" playsinline></video>
-    <div class="scan-area"></div>
-    <div id="overlay">ОБРОБКА...</div>
+
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div>Ініціалізація камери...</div>
+    </div>
+
+    <div id="success-overlay">
+        <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+        <div class="status-text">КВИТОК ЗЧИТАНО!<br><span style="font-size: 16px; font-weight: normal;">Очікуйте відповідь від бота</span></div>
+    </div>
+
+    <div id="video-container">
+        <video id="video" playsinline></video>
+        <div class="scanner-overlay">
+            <div class="box">
+                <div class="line"></div>
+            </div>
+            <div style="margin-top: 30px; color: rgba(255,255,255,0.7); font-size: 14px;">Наведіть на QR-код</div>
+        </div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        tg.ready();
 
-        const codeReader = new ZXing.BrowserQRCodeReader();
         const videoElement = document.getElementById('video');
-        const overlay = document.getElementById('overlay');
-        let isPaused = false;
+        const loadingScreen = document.getElementById('loading-screen');
+        const successOverlay = document.getElementById('success-overlay');
+        const codeReader = new ZXing.BrowserQRCodeReader();
+        
+        let isScanning = true;
 
-        async function initCamera() {
+        async function startSystem() {
             try {
-                // 1. Запитуємо дозвіл прямо
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+                // ПРИМУСОВИЙ ЗАПИТ ДОСТУПУ (Найважливіша частина для Android)
+                const constraints = {
+                    video: {
+                        facingMode: "environment", // Задня камера
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoElement.srcObject = stream;
                 
-                // 2. Запускаємо логіку зчитування
+                // Чекаємо поки відео почне реально грати, щоб прибрати чорний екран
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    loadingScreen.style.display = 'none';
+                };
+
+                // Запуск логіки розпізнавання
                 codeReader.decodeFromVideoDevice(undefined, 'video', (result, err) => {
-                    if (result && !isPaused) {
-                        isPaused = true;
-                        tg.sendData("CHECK:" + result.getText());
+                    if (result && isScanning) {
+                        isScanning = false; // Блокуємо повторні скани
                         
-                        overlay.style.display = 'flex';
+                        const codeData = result.getText();
+                        tg.sendData("CHECK:" + codeData); // Відправка в бот
+                        
+                        // Візуальний ефект
+                        successOverlay.style.display = 'flex';
                         if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
                         
+                        // Повертаємо сканер в роботу через 3 секунди
                         setTimeout(() => {
-                            overlay.style.display = 'none';
-                            isPaused = false;
-                        }, 2500);
+                            successOverlay.style.display = 'none';
+                            isScanning = true;
+                        }, 3000);
                     }
                 });
-            } catch (e) {
-                alert("Помилка камери: " + e.message + "\nПереконайтеся, що надали дозвіл у спливаючому вікні.");
+
+            } catch (error) {
+                console.error('Помилка камери:', error);
+                document.body.innerHTML = `<div style="padding:50px; text-align:center;">
+                    <h2>Помилка доступу</h2>
+                    <p>Будь ласка, дозвольте доступ до камери в налаштуваннях Telegram або браузера.</p>
+                    <p style="font-size:10px;">${error.message}</p>
+                </div>`;
             }
         }
 
-        // Запуск
-        initCamera();
+        // Запускаємо систему
+        startSystem();
     </script>
 </body>
 </html>
