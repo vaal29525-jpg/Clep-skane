@@ -3,62 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Scanner</title>
+    <title>Clap Scanner Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
-        body { margin:0; padding:0; background:#000; color:#fff; font-family:sans-serif; overflow:hidden; height:100vh; }
-        #reader { width:100%; height:calc(100vh - 120px); }
-        .header { padding:15px; text-align:center; background:#111; font-size:18px; font-weight:600; }
-        .status { position:absolute; bottom:20px; left:0; right:0; text-align:center; padding:12px; background:rgba(0,0,0,0.7); font-size:16px; }
-        button { margin:15px auto; display:block; padding:16px 32px; font-size:17px; background:#007AFF; color:white; border:none; border-radius:12px; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#000; color:#fff; font-family: -apple-system, sans-serif; height:100vh; overflow:hidden; }
+        .header { padding:16px; text-align:center; background:#111; font-size:18px; font-weight:600; }
+        #reader { width:100%; height:calc(100vh - 130px); }
+        .footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.85); padding:15px; text-align:center; }
+        button { padding:16px 32px; font-size:17px; font-weight:600; background:#007AFF; color:white; border:none; border-radius:14px; }
+        #status { margin-top:8px; font-size:15px; color:#0f0; }
     </style>
 </head>
 <body>
 
     <div class="header">CLAP SCANNER PRO</div>
     <div id="reader"></div>
-    <div class="status" id="status">Запуск сканера...</div>
-    <button onclick="restartScanner()">ПЕРЕЗАПУСТИТИ</button>
+
+    <div class="footer">
+        <div id="status">Наведи камеру на QR-код</div>
+        <button onclick="restart()">ПЕРЕЗАПУСТИТИ СКАНЕР</button>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
 
-        let html5QrCode;
+        let scanner = null;
 
         function startScanner() {
-            const status = document.getElementById("status");
-            status.textContent = "Запуск камери...";
+            document.getElementById("status").textContent = "Запуск камери...";
 
-            html5QrCode = new Html5Qrcode("reader");
+            scanner = new Html5Qrcode("reader");
 
-            const config = { fps: 15, qrbox: { width: 250, height: 250 } };
+            const config = { fps: 20, qrbox: { width: 260, height: 260 } };
 
-            html5QrCode.start(
-                { facingMode: "environment" }, 
+            scanner.start(
+                { facingMode: "environment" },
                 config,
                 (decodedText) => {
                     tg.HapticFeedback.notificationOccurred("success");
-                    document.getElementById("status").innerHTML = `✅ Зчитано: <b>${decodedText}</b>`;
+                    document.getElementById("status").innerHTML = `✅ <b>${decodedText}</b>`;
                     tg.sendData(decodedText);
                 },
-                (error) => {} // не спамити помилками
-            ).then(() => {
-                status.textContent = "✅ Наведи камеру на QR-код";
-            }).catch(err => {
-                status.textContent = "❌ " + err;
+                (error) => {}
+            ).catch(err => {
+                document.getElementById("status").textContent = "Помилка запуску камери";
                 console.error(err);
             });
         }
 
-        function restartScanner() {
-            if (html5QrCode) html5QrCode.stop();
-            startScanner();
+        function restart() {
+            if (scanner) scanner.stop().then(startScanner);
+            else startScanner();
         }
 
-        // Автозапуск
         window.onload = startScanner;
     </script>
 </body>
