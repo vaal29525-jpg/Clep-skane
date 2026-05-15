@@ -3,233 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>CLAP SCANNER ULTIMATE v9.0</title>
-    
+    <title>QuickScan</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
-
     <style>
-        :root {
-            --accent: #007AFF;
-            --bg: #000000;
-            --card: #121212;
-            --success: #32D74B;
-        }
-
-        * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
-        
-        body {
-            margin: 0;
-            background-color: var(--bg);
-            color: #fff;
-            font-family: -apple-system, system-ui, sans-serif;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        /* UI Елементи */
-        .top-bar {
-            padding: 20px;
-            text-align: center;
-            background: var(--card);
-            border-bottom: 1px solid #222;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-
-        .top-bar h1 {
-            margin: 0;
-            font-size: 14px;
-            letter-spacing: 3px;
-            color: var(--accent);
-            font-weight: 800;
-        }
-
-        /* Область камери */
-        .scanner-container {
-            position: relative;
-            flex: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #050505;
-        }
-
-        #video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        /* Приціл сканера */
-        .overlay {
-            position: absolute;
-            width: 260px;
-            height: 260px;
-            border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 40px;
-            pointer-events: none;
-        }
-
-        .corner {
-            position: absolute;
-            width: 40px;
-            height: 40px;
-            border: 4px solid var(--accent);
-        }
-
-        .t-l { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-top-left-radius: 20px; }
-        .t-r { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-top-right-radius: 20px; }
-        .b-l { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-bottom-left-radius: 20px; }
-        .b-r { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-bottom-right-radius: 20px; }
-
-        .scan-line {
-            position: absolute;
-            width: 100%;
-            height: 2px;
-            background: var(--accent);
-            box-shadow: 0 0 15px var(--accent);
-            top: 0;
-            animation: move 2.5s infinite ease-in-out;
-        }
-
-        @keyframes move {
-            0%, 100% { top: 5%; opacity: 0.2; }
-            50% { top: 95%; opacity: 1; }
-        }
-
-        /* Панель керування */
-        .control-panel {
-            background: var(--card);
-            padding: 30px 20px;
-            border-top: 1px solid #222;
-            text-align: center;
-        }
-
-        #status-info {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 20px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .btn {
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            padding: 18px 0;
-            width: 100%;
-            border-radius: 16px;
-            font-size: 16px;
-            font-weight: 700;
-            box-shadow: 0 10px 25px rgba(0, 122, 255, 0.3);
-            transition: 0.3s;
-        }
-
-        .btn:active { transform: scale(0.96); opacity: 0.8; }
-
-        /* Екран обробки */
-        .loading-screen {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.9);
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            z-index: 99;
-            backdrop-filter: blur(10px);
-        }
-
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 3px solid #222;
-            border-top: 3px solid var(--accent);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        #video { width: 100%; height: 100%; object-fit: cover; }
+        .box { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 220px; height: 220px; border: 2px solid #007AFF; border-radius: 20px; pointer-events: none; }
+        .status { position: absolute; bottom: 20px; width: 100%; text-align: center; color: #007AFF; font-family: sans-serif; font-weight: bold; }
     </style>
 </head>
 <body>
-
-    <div class="top-bar">
-        <h1>BORYSLAV ACCESS CONTROL</h1>
-    </div>
-
-    <div class="scanner-container">
-        <video id="video"></video>
-        <div class="overlay">
-            <div class="corner t-l"></div>
-            <div class="corner t-r"></div>
-            <div class="corner b-l"></div>
-            <div class="corner b-r"></div>
-            <div class="scan-line"></div>
-        </div>
-    </div>
-
-    <div class="control-panel">
-        <div id="status-info">Очікування QR-коду...</div>
-        <button class="btn" onclick="location.reload()">ПЕРЕЗАВАНТАЖИТИ</button>
-    </div>
-
-    <div id="loading" class="loading-screen">
-        <div class="spinner"></div>
-        <p style="margin-top: 20px; font-weight: 600;">ПЕРЕВІРКА В БАЗІ...</p>
-    </div>
+    <video id="video"></video>
+    <div class="box"></div>
+    <div class="status">ПОШУК QR...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        tg.ready();
+        const reader = new ZXing.BrowserQRCodeReader();
+        let sent = false;
 
-        const codeReader = new ZXing.BrowserQRCodeReader();
-        let isLocked = false;
-
-        async function initScanner() {
-            const status = document.getElementById('status-info');
-            
+        async function init() {
             try {
-                const videoInputs = await codeReader.listVideoInputDevices();
+                const devices = await reader.listVideoInputDevices();
+                const back = devices.find(d => d.label.includes('back')) || devices[0];
                 
-                // Вибираємо найкращу задню камеру
-                const backCam = videoInputs.find(d => 
-                    d.label.toLowerCase().includes('back') || 
-                    d.label.toLowerCase().includes('зад')
-                ) || videoInputs[0];
-
-                status.innerText = "Камера активна: " + (backCam.label.slice(0, 20) || "Main");
-
-                codeReader.decodeFromVideoDevice(backCam.deviceId, 'video', (result, err) => {
-                    if (result && !isLocked) {
-                        isLocked = true;
-                        handleScan(result.getText());
+                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
+                    if (result && !sent) {
+                        sent = true;
+                        tg.HapticFeedback.impactOccurred('medium');
+                        tg.sendData(result.getText()); // Відправка миттєва без затримок
                     }
                 });
-            } catch (e) {
-                status.innerText = "Помилка доступу до оптики";
-                console.error(e);
-            }
+            } catch (e) { document.querySelector('.status').innerText = "ERROR"; }
         }
-
-        function handleScan(data) {
-            document.getElementById('loading').style.display = 'flex';
-            
-            // Тактильний відгук (вібрація телефону)
-            tg.HapticFeedback.notificationOccurred('success');
-
-            // Невелика пауза для ефекту "обробки"
-            setTimeout(() => {
-                tg.sendData(data.trim());
-                // Після sendData телеграм сам закриє WebApp і бот на ноутбуці отримає код
-            }, 600);
-        }
-
-        window.onload = initScanner;
+        init();
     </script>
 </body>
 </html>
