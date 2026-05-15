@@ -3,49 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner Pro</title>
+    <title>Clap Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        body { margin: 0; background: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        .header { padding: 20px; text-align: center; background: #111; font-size: 14px; font-weight: bold; color: #007AFF; letter-spacing: 2px; }
+        .camera-container { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; background: #000; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 260px; height: 260px; pointer-events: none; }
-        .corner { position: absolute; width: 45px; height: 45px; border: 4px solid #007AFF; }
-        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 20px 0 0 0; }
-        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 20px 0 0; }
-        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 20px; }
-        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 20px 0; }
-        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; top: 0; animation: move 2s infinite linear; }
+        
+        /* Рамка сканера */
+        .scan-area { position: absolute; width: 260px; height: 260px; pointer-events: none; }
+        .c { position: absolute; width: 40px; height: 40px; border: 4px solid #007AFF; }
+        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 15px 0 0 0; }
+        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 15px 0 0; }
+        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 15px; }
+        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 15px 0; }
+        
+        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 10px #007AFF; top: 0; animation: move 2.5s infinite linear; }
         @keyframes move { 0%, 100% { top: 0; } 50% { top: 100%; } }
+        
+        .footer { padding: 25px; text-align: center; background: #111; }
+        #status { font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 15px; }
     </style>
 </head>
 <body>
-    <video id="video"></video>
-    <div class="overlay">
-        <div class="corner tl"></div><div class="corner tr"></div>
-        <div class="corner bl"></div><div class="corner br"></div>
-        <div class="laser"></div>
+    <div class="header">CLAP ACCESS SYSTEM</div>
+    
+    <div class="camera-container">
+        <video id="video" playsinline></video>
+        <div class="scan-area">
+            <div class="c tl"></div><div class="c tr"></div>
+            <div class="c bl"></div><div class="c br"></div>
+            <div class="laser"></div>
+        </div>
     </div>
+
+    <div class="footer">
+        <div id="status">Ініціалізація камери...</div>
+        <button style="background: #007AFF; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-weight: bold; width: 100%;" onclick="location.reload()">ОНОВИТИ КАМЕРУ</button>
+    </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const reader = new ZXing.BrowserQRCodeReader();
-        let ready = true;
 
-        async function init() {
+        const codeReader = new ZXing.BrowserQRCodeReader();
+        let isScanned = false;
+
+        async function start() {
             try {
-                const devices = await reader.listVideoInputDevices();
-                const back = devices.find(d => d.label.includes('back')) || devices[0];
-                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
-                    if (result && ready) {
-                        ready = false;
+                const devices = await codeReader.listVideoInputDevices();
+                // Шукаємо задню камеру (back)
+                const selected = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+                
+                document.getElementById('status').innerText = "Готовий до сканування";
+
+                codeReader.decodeFromVideoDevice(selected.deviceId, 'video', (result) => {
+                    if (result && !isScanned) {
+                        isScanned = true;
                         tg.HapticFeedback.notificationOccurred('success');
-                        tg.sendData(result.getText());
+                        tg.sendData(result.getText().trim());
                     }
                 });
-            } catch (e) { alert("Доступ до камери заборонено"); }
+            } catch (err) {
+                document.getElementById('status').innerText = "Помилка камери!";
+                console.error(err);
+            }
         }
-        init();
+        
+        window.onload = start;
     </script>
 </body>
 </html>
