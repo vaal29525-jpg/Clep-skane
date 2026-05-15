@@ -7,72 +7,46 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: -apple-system, sans-serif; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
-        .header { padding: 20px; text-align: center; background: #111; font-size: 14px; font-weight: bold; color: #007AFF; letter-spacing: 2px; }
-        .camera-container { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; background: #000; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; transition: background 0.3s; height: 100vh; overflow: hidden; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        
-        /* Рамка сканера */
-        .scan-area { position: absolute; width: 260px; height: 260px; pointer-events: none; }
-        .c { position: absolute; width: 40px; height: 40px; border: 4px solid #007AFF; }
-        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 15px 0 0 0; }
-        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 15px 0 0; }
-        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 15px; }
-        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 15px 0; }
-        
-        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 10px #007AFF; top: 0; animation: move 2.5s infinite linear; }
-        @keyframes move { 0%, 100% { top: 0; } 50% { top: 100%; } }
-        
-        .footer { padding: 25px; text-align: center; background: #111; }
-        #status { font-size: 12px; color: #555; text-transform: uppercase; margin-bottom: 15px; }
+        .ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+        .frame { width: 250px; height: 250px; border: 2px solid rgba(255,255,255,0.2); border-radius: 20px; position: relative; }
+        .frame::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; animation: scan 2s infinite; }
+        @keyframes scan { 0%, 100% { top: 0; } 50% { top: 100%; } }
+        .result-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; z-index: 10; align-items: center; justify-content: center; font-size: 30px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="header">CLAP ACCESS SYSTEM</div>
-    
-    <div class="camera-container">
-        <video id="video" playsinline></video>
-        <div class="scan-area">
-            <div class="c tl"></div><div class="c tr"></div>
-            <div class="c bl"></div><div class="c br"></div>
-            <div class="laser"></div>
-        </div>
-    </div>
-
-    <div class="footer">
-        <div id="status">Ініціалізація камери...</div>
-        <button style="background: #007AFF; color: white; border: none; padding: 15px 30px; border-radius: 10px; font-weight: bold; width: 100%;" onclick="location.reload()">ОНОВИТИ КАМЕРУ</button>
-    </div>
+    <video id="video"></video>
+    <div class="ui"><div class="frame"></div></div>
+    <div id="res" class="result-overlay"></div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        const reader = new ZXing.BrowserQRCodeReader();
+        const resDiv = document.getElementById('res');
 
-        const codeReader = new ZXing.BrowserQRCodeReader();
-        let isScanned = false;
-
-        async function start() {
+        async function init() {
             try {
-                const devices = await codeReader.listVideoInputDevices();
-                // Шукаємо задню камеру (back)
-                const selected = devices.find(d => d.label.toLowerCase().includes('back')) || devices[0];
+                const devices = await reader.listVideoInputDevices();
+                const back = devices.find(d => d.label.includes('back')) || devices[0];
                 
-                document.getElementById('status').innerText = "Готовий до сканування";
-
-                codeReader.decodeFromVideoDevice(selected.deviceId, 'video', (result) => {
-                    if (result && !isScanned) {
-                        isScanned = true;
+                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
+                    if (result) {
+                        // Візуальний ефект успішного зчитування
+                        document.body.style.background = "#00ff00";
                         tg.HapticFeedback.notificationOccurred('success');
-                        tg.sendData(result.getText().trim());
+                        
+                        // Відправка даних боту
+                        setTimeout(() => {
+                            tg.sendData(result.getText());
+                        }, 500);
                     }
                 });
-            } catch (err) {
-                document.getElementById('status').innerText = "Помилка камери!";
-                console.error(err);
-            }
+            } catch (e) { alert("Камера недоступна"); }
         }
-        
-        window.onload = start;
+        init();
     </script>
 </body>
 </html>
