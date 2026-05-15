@@ -3,66 +3,285 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Scanner Pro</title>
+    <title>Clap Control Scanner v9.0 PRO</title>
+    
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    
     <style>
-        body { margin:0; background:#000; color:#fff; font-family:sans-serif; height:100vh; overflow:hidden; }
-        .header { padding:16px; text-align:center; background:#111; font-size:18px; font-weight:600; }
-        #reader { width:100%; height:calc(100vh - 160px); }
-        .footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); padding:12px; text-align:center; }
-        button { padding:15px 30px; font-size:17px; background:#007AFF; color:white; border:none; border-radius:12px; }
-        #status { margin:8px 0; font-size:15px; min-height:20px; }
+        :root {
+            --primary-blue: #007AFF;
+            --success-green: #34C759;
+            --danger-red: #FF3B30;
+            --bg-color: #000000;
+            --panel-color: #121212;
+            --text-color: #FFFFFF;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Заголовок */
+        .app-header {
+            padding: 20px;
+            background: var(--panel-color);
+            text-align: center;
+            border-bottom: 1px solid #222;
+            z-index: 10;
+        }
+
+        .app-header h1 {
+            margin: 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--primary-blue);
+        }
+
+        /* Зона сканування */
+        .viewport-container {
+            position: relative;
+            flex: 1;
+            background: #050505;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #video-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Дизайнерська рамка-приціл */
+        .scan-overlay {
+            position: absolute;
+            width: 280px;
+            height: 280px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .scan-corner {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--primary-blue);
+        }
+
+        .top-left { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 20px 0 0 0; }
+        .top-right { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 20px 0 0; }
+        .bottom-left { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 20px; }
+        .bottom-right { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 20px 0; }
+
+        .laser-line {
+            position: absolute;
+            width: 100%;
+            height: 2px;
+            background: var(--primary-blue);
+            box-shadow: 0 0 15px var(--primary-blue);
+            top: 50%;
+            animation: scan-move 3s infinite ease-in-out;
+        }
+
+        @keyframes scan-move {
+            0%, 100% { top: 5%; opacity: 0.3; }
+            50% { top: 95%; opacity: 1; }
+        }
+
+        /* Панель керування */
+        .bottom-shelf {
+            background: var(--panel-color);
+            padding: 30px 20px;
+            border-top: 1px solid #222;
+            text-align: center;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            background: #1a1a1a;
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 20px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .btn-action {
+            width: 100%;
+            padding: 18px;
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3);
+            transition: all 0.2s;
+        }
+
+        .btn-action:active {
+            transform: scale(0.97);
+            background: #005bb5;
+        }
+
+        /* Модальне вікно успіху/помилки */
+        #result-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .modal-card {
+            background: #1c1c1e;
+            padding: 40px;
+            border-radius: 30px;
+            width: 80%;
+            text-align: center;
+            border: 1px solid #333;
+        }
+
+        .loader {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top: 4px solid var(--primary-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
     </style>
 </head>
 <body>
 
-    <div class="header">CLAP SCANNER PRO</div>
-    <div id="reader"></div>
+    <header class="app-header">
+        <h1>Clap Access Enterprise</h1>
+    </header>
 
-    <div class="footer">
-        <div id="status">Наведи на QR-код...</div>
-        <button onclick="restartScanner()">ПЕРЕЗАПУСТИТИ</button>
+    <main class="viewport-container">
+        <video id="video-preview" playsinline></video>
+        
+        <div class="scan-overlay">
+            <div class="scan-corner top-left"></div>
+            <div class="scan-corner top-right"></div>
+            <div class="scan-corner bottom-left"></div>
+            <div class="scan-corner bottom-right"></div>
+            <div class="laser-line"></div>
+        </div>
+    </main>
+
+    <footer class="bottom-shelf">
+        <div id="status" class="status-badge">Ініціалізація камери...</div>
+        <button class="btn-action" onclick="restartScan()">ПЕРЕЗАПУСТИТИ СКАНЕР</button>
+    </footer>
+
+    <div id="result-modal">
+        <div class="modal-card">
+            <div class="loader"></div>
+            <h2 id="modal-text">ОБРОБКА...</h2>
+            <p style="color: #666; font-size: 14px;">Дані передаються до Борислава</p>
+        </div>
     </div>
 
     <script>
+        /**
+         * Клієнтська логіка версії 9.0 PRO
+         * Розроблено для максимальної стабільності
+         */
         const tg = window.Telegram.WebApp;
         tg.expand();
         tg.ready();
-        tg.disableVerticalSwipes();
 
-        let html5QrCode = null;
+        const codeReader = new ZXing.BrowserQRCodeReader();
+        let isScanningLocked = false;
+        let selectedDeviceId;
 
-        function startScanner() {
-            document.getElementById("status").innerHTML = "Запуск камери...";
+        // Ініціалізація обладнання
+        async function initCamera() {
+            const statusLabel = document.getElementById('status');
+            try {
+                const videoDevices = await codeReader.listVideoInputDevices();
+                
+                // Інтелектуальний підбір камери (шукаємо задню)
+                const backCamera = videoDevices.find(device => 
+                    device.label.toLowerCase().includes('back') || 
+                    device.label.toLowerCase().includes('rear') ||
+                    device.label.toLowerCase().includes('задняя')
+                ) || videoDevices[0];
 
-            html5QrCode = new Html5Qrcode("reader");
+                selectedDeviceId = backCamera.deviceId;
+                statusLabel.innerText = "Оптику налаштовано";
+                statusLabel.style.color = "var(--success-green)";
 
-            html5QrCode.start(
-                { facingMode: "environment" },
-                { fps: 20, qrbox: { width: 260, height: 260 } },
-                (decodedText) => {
-                    tg.HapticFeedback.notificationOccurred("success");
-                    document.getElementById("status").innerHTML = `✅ <b>Зчитано:</b><br>${decodedText}`;
+                startScanning();
+            } catch (err) {
+                statusLabel.innerText = "Помилка обладнання";
+                statusLabel.style.color = "var(--danger-red)";
+                console.error("Device error:", err);
+            }
+        }
 
-                    // Відправка в бот з затримкою
-                    setTimeout(() => {
-                        tg.sendData(decodedText);
-                        console.log("Відправлено в бот:", decodedText);
-                    }, 400);
-                },
-                () => {} // ігнор помилок
-            ).catch(err => {
-                document.getElementById("status").textContent = "Помилка запуску камери";
+        function startScanning() {
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'video-preview', (result, err) => {
+                if (result && !isScanningLocked) {
+                    isScanningLocked = true;
+                    handleScanResult(result.getText());
+                }
             });
         }
 
-        function restartScanner() {
-            if (html5QrCode) html5QrCode.stop().then(startScanner);
-            else startScanner();
+        function handleScanResult(data) {
+            const modal = document.getElementById('result-modal');
+            const statusLabel = document.getElementById('status');
+
+            // Візуальний відгук
+            modal.style.display = 'flex';
+            tg.HapticFeedback.notificationOccurred('success');
+
+            // Відправка даних у бот
+            // Ми додаємо невелику затримку, щоб користувач бачив процес
+            setTimeout(() => {
+                tg.sendData(data.trim());
+                // Після sendData WebApp автоматично закриється
+            }, 800);
         }
 
-        window.onload = startScanner;
+        function restartScan() {
+            isScanningLocked = false;
+            document.getElementById('result-modal').style.display = 'none';
+            location.reload();
+        }
+
+        // Запуск при завантаженні
+        window.addEventListener('load', initCamera);
+
+        // Обробка теми Telegram
+        if (tg.themeParams.button_color) {
+            document.documentElement.style.setProperty('--primary-blue', tg.themeParams.button_color);
+        }
     </script>
 </body>
 </html>
