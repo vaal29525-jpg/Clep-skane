@@ -3,31 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
+        .viewport { flex: 1; position: relative; background: #050505; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 250px; height: 250px; }
-        .corner { position: absolute; width: 40px; height: 40px; border: 4px solid #007AFF; }
-        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 15px 0 0 0; }
-        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 15px 0 0; }
-        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 15px; }
-        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 15px 0; }
-        .line { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; top: 0; animation: move 2s infinite linear; }
-        @keyframes move { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
-        .status { position: fixed; bottom: 30px; width: 100%; text-align: center; font-size: 14px; color: #555; }
+        .box { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 250px; height: 250px; border: 3px solid #007AFF; border-radius: 20px; box-shadow: 0 0 20px #007AFF; }
+        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; top: 0; animation: scan 2s infinite linear; }
+        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
+        .footer { padding: 20px; text-align: center; background: #111; font-size: 14px; color: #007AFF; font-weight: bold; }
     </style>
 </head>
 <body>
-    <video id="video"></video>
-    <div class="overlay">
-        <div class="corner tl"></div><div class="corner tr"></div>
-        <div class="corner bl"></div><div class="corner br"></div>
-        <div class="line"></div>
+    <div class="viewport">
+        <video id="video"></video>
+        <div class="box"><div class="laser"></div></div>
     </div>
-    <div class="status">Очікування QR-коду...</div>
+    <div class="footer">CLAP SCANNER PRO v10.0</div>
 
     <script>
         const tg = window.Telegram.WebApp;
@@ -35,20 +28,20 @@
         const reader = new ZXing.BrowserQRCodeReader();
         let active = true;
 
-        async function start() {
+        async function init() {
             try {
                 const devices = await reader.listVideoInputDevices();
                 const back = devices.find(d => d.label.includes('back')) || devices[0];
-                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
-                    if (result && active) {
+                reader.decodeFromVideoDevice(back.deviceId, 'video', (res) => {
+                    if (res && active) {
                         active = false;
                         tg.HapticFeedback.notificationOccurred('success');
-                        tg.sendData(result.getText());
+                        tg.sendData(res.getText());
                     }
                 });
-            } catch (e) { document.querySelector('.status').innerText = "Помилка камери"; }
+            } catch (e) { alert("Помилка камери!"); }
         }
-        start();
+        init();
     </script>
 </body>
 </html>
