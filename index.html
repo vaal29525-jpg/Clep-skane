@@ -3,50 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Clap Scanner</title>
+    <title>CLAP SCANNER PRO</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; transition: background 0.3s; height: 100vh; overflow: hidden; }
+        body { margin: 0; background: #000; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        .ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-        .frame { width: 250px; height: 250px; border: 2px solid rgba(255,255,255,0.2); border-radius: 20px; position: relative; }
-        .frame::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; animation: scan 2s infinite; }
-        @keyframes scan { 0%, 100% { top: 0; } 50% { top: 100%; } }
-        .result-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: none; z-index: 10; align-items: center; justify-content: center; font-size: 30px; font-weight: bold; }
+        
+        /* Рамка сканера */
+        .scanner-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+        .frame { 
+            width: 260px; height: 260px; 
+            border: 2px solid rgba(255,255,255,0.3); 
+            border-radius: 24px; 
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        /* Кути */
+        .corner { position: absolute; width: 30px; height: 30px; border: 4px solid #007AFF; transition: border-color 0.3s; }
+        .tl { top: -2px; left: -2px; border-right: 0; border-bottom: 0; border-radius: 12px 0 0 0; }
+        .tr { top: -2px; right: -2px; border-left: 0; border-bottom: 0; border-radius: 0 12px 0 0; }
+        .bl { bottom: -2px; left: -2px; border-right: 0; border-top: 0; border-radius: 0 0 0 12px; }
+        .br { bottom: -2px; right: -2px; border-left: 0; border-top: 0; border-radius: 0 0 12px 0; }
+
+        /* Анімація лінії */
+        .line { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 10px #007AFF; top: 0; animation: scan 2.5s infinite linear; }
+        @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+
+        /* Кольорові стани */
+        .success { border-color: #28a745 !important; box-shadow: 0 0 30px #28a745; }
+        .success .corner { border-color: #28a745 !important; }
+        .error { border-color: #dc3545 !important; box-shadow: 0 0 30px #dc3545; }
+        .error .corner { border-color: #dc3545 !important; }
+
+        .info { position: absolute; bottom: 40px; width: 100%; text-align: center; color: #fff; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; }
     </style>
 </head>
 <body>
-    <video id="video"></video>
-    <div class="ui"><div class="frame"></div></div>
-    <div id="res" class="result-overlay"></div>
+    <video id="video" playsinline></video>
+    <div class="scanner-container">
+        <div id="scanner-frame" class="frame">
+            <div class="corner tl"></div><div class="corner tr"></div>
+            <div class="corner bl"></div><div class="corner br"></div>
+            <div class="line"></div>
+        </div>
+    </div>
+    <div class="info" id="status">Наведіть на QR-код</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const reader = new ZXing.BrowserQRCodeReader();
-        const resDiv = document.getElementById('res');
+        const frame = document.getElementById('scanner-frame');
+        const status = document.getElementById('status');
+        const codeReader = new ZXing.BrowserQRCodeReader();
+        let isDetected = false;
 
-        async function init() {
+        async function startScanning() {
             try {
-                const devices = await reader.listVideoInputDevices();
-                const back = devices.find(d => d.label.includes('back')) || devices[0];
-                
-                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
-                    if (result) {
-                        // Візуальний ефект успішного зчитування
-                        document.body.style.background = "#00ff00";
-                        tg.HapticFeedback.notificationOccurred('success');
+                const devices = await codeReader.listVideoInputDevices();
+                const backCamera = devices.find(device => 
+                    device.label.toLowerCase().includes('back') || 
+                    device.label.toLowerCase().includes('rear')
+                ) || devices[0];
+
+                await codeReader.decodeFromVideoDevice(backCamera.deviceId, 'video', (result, err) => {
+                    if (result && !isDetected) {
+                        isDetected = true;
                         
-                        // Відправка даних боту
+                        // Вмикаємо ЗЕЛЕНИЙ колір (Успіх зчитування)
+                        frame.classList.add('success');
+                        status.innerText = "ЗЧИТАНО!";
+                        tg.HapticFeedback.notificationOccurred('success');
+
+                        // Відправляємо дані боту
                         setTimeout(() => {
                             tg.sendData(result.getText());
-                        }, 500);
+                        }, 600);
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        console.error(err);
                     }
                 });
-            } catch (e) { alert("Камера недоступна"); }
+            } catch (err) {
+                status.innerText = "Помилка доступу до камери";
+                frame.classList.add('error');
+            }
         }
-        init();
+
+        window.addEventListener('load', startScanning);
     </script>
 </body>
 </html>
