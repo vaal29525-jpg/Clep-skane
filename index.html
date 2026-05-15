@@ -3,43 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Scanner Pro</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; }
-        .viewport { flex: 1; position: relative; background: #050505; }
+        body { margin: 0; background: #000; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-        .box { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 250px; height: 250px; border: 3px solid #007AFF; border-radius: 20px; box-shadow: 0 0 20px #007AFF; }
-        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; top: 0; animation: scan 2s infinite linear; }
-        @keyframes scan { 0% { top: 0; } 100% { top: 100%; } }
-        .footer { padding: 20px; text-align: center; background: #111; font-size: 14px; color: #007AFF; font-weight: bold; }
+        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 260px; height: 260px; pointer-events: none; }
+        .corner { position: absolute; width: 45px; height: 45px; border: 4px solid #007AFF; }
+        .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 20px 0 0 0; }
+        .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 20px 0 0; }
+        .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 20px; }
+        .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 20px 0; }
+        .laser { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; top: 0; animation: move 2s infinite linear; }
+        @keyframes move { 0%, 100% { top: 0; } 50% { top: 100%; } }
     </style>
 </head>
 <body>
-    <div class="viewport">
-        <video id="video"></video>
-        <div class="box"><div class="laser"></div></div>
+    <video id="video"></video>
+    <div class="overlay">
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div class="laser"></div>
     </div>
-    <div class="footer">CLAP SCANNER PRO v10.0</div>
-
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         const reader = new ZXing.BrowserQRCodeReader();
-        let active = true;
+        let ready = true;
 
         async function init() {
             try {
                 const devices = await reader.listVideoInputDevices();
                 const back = devices.find(d => d.label.includes('back')) || devices[0];
-                reader.decodeFromVideoDevice(back.deviceId, 'video', (res) => {
-                    if (res && active) {
-                        active = false;
+                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
+                    if (result && ready) {
+                        ready = false;
                         tg.HapticFeedback.notificationOccurred('success');
-                        tg.sendData(res.getText());
+                        tg.sendData(result.getText());
                     }
                 });
-            } catch (e) { alert("Помилка камери!"); }
+            } catch (e) { alert("Доступ до камери заборонено"); }
         }
         init();
     </script>
