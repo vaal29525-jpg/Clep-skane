@@ -7,12 +7,12 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
     <style>
-        body { margin:0; padding:0; background:#000; color:#fff; font-family:sans-serif; height:100vh; overflow:hidden; }
+        body { margin:0; background:#000; color:#fff; font-family:sans-serif; height:100vh; overflow:hidden; }
         .header { padding:16px; text-align:center; background:#111; font-size:18px; font-weight:600; }
-        #reader { width:100%; height:calc(100vh - 140px); }
-        .footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.9); padding:15px; text-align:center; }
-        button { padding:16px 32px; font-size:17px; background:#007AFF; color:white; border:none; border-radius:14px; margin-top:8px; }
-        #status { margin:10px 0; font-size:16px; }
+        #reader { width:100%; height:calc(100vh - 160px); }
+        .footer { position:fixed; bottom:0; left:0; right:0; background:rgba(0,0,0,0.95); padding:12px; text-align:center; }
+        button { padding:15px 30px; font-size:17px; background:#007AFF; color:white; border:none; border-radius:12px; }
+        #status { margin:8px 0; font-size:15px; min-height:20px; }
     </style>
 </head>
 <body>
@@ -21,8 +21,8 @@
     <div id="reader"></div>
 
     <div class="footer">
-        <div id="status">Наведи камеру на QR-код</div>
-        <button onclick="restartScanner()">ПЕРЕЗАПУСТИТИ СКАНЕР</button>
+        <div id="status">Наведи на QR-код...</div>
+        <button onclick="restartScanner()">ПЕРЕЗАПУСТИТИ</button>
     </div>
 
     <script>
@@ -34,45 +34,34 @@
         let html5QrCode = null;
 
         function startScanner() {
-            document.getElementById("status").textContent = "Запуск камери...";
+            document.getElementById("status").innerHTML = "Запуск камери...";
 
             html5QrCode = new Html5Qrcode("reader");
 
-            const config = { fps: 20, qrbox: { width: 260, height: 260 } };
-
             html5QrCode.start(
                 { facingMode: "environment" },
-                config,
+                { fps: 20, qrbox: { width: 260, height: 260 } },
                 (decodedText) => {
-                    // Успішне сканування
                     tg.HapticFeedback.notificationOccurred("success");
-                    document.getElementById("status").innerHTML = `✅ <b>Зчитано!</b><br>${decodedText}`;
+                    document.getElementById("status").innerHTML = `✅ <b>Зчитано:</b><br>${decodedText}`;
 
-                    // Головне — відправка в бот
+                    // Відправка в бот з затримкою
                     setTimeout(() => {
                         tg.sendData(decodedText);
-                    }, 300);
+                        console.log("Відправлено в бот:", decodedText);
+                    }, 400);
                 },
-                (errorMessage) => {
-                    // Просто ігноруємо помилки читання
-                }
+                () => {} // ігнор помилок
             ).catch(err => {
-                document.getElementById("status").textContent = "Помилка камери";
-                console.error(err);
+                document.getElementById("status").textContent = "Помилка запуску камери";
             });
         }
 
         function restartScanner() {
-            if (html5QrCode) {
-                html5QrCode.stop().then(() => {
-                    startScanner();
-                });
-            } else {
-                startScanner();
-            }
+            if (html5QrCode) html5QrCode.stop().then(startScanner);
+            else startScanner();
         }
 
-        // Автозапуск
         window.onload = startScanner;
     </script>
 </body>
