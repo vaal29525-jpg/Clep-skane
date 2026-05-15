@@ -3,111 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Scanner Pro v10</title>
+    <title>Scanner</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <style>
-        :root { --blue: #007AFF; --red: #FF3B30; --bg: #000; }
-        body { margin: 0; background: var(--bg); color: #fff; font-family: sans-serif; height: 100vh; display: flex; flex-direction: column; }
-        
-        .header { padding: 20px; text-align: center; background: #111; border-bottom: 1px solid #222; }
-        .header span { color: var(--blue); font-weight: bold; letter-spacing: 2px; }
-
-        .viewport { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #050505; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
         #video { width: 100%; height: 100%; object-fit: cover; }
-
-        /* Повертаємо кути та рамку */
-        .overlay { position: absolute; width: 260px; height: 260px; pointer-events: none; }
-        .corner { position: absolute; width: 40px; height: 40px; border: 4px solid var(--blue); }
+        .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 250px; height: 250px; }
+        .corner { position: absolute; width: 40px; height: 40px; border: 4px solid #007AFF; }
         .tl { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 15px 0 0 0; }
         .tr { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 15px 0 0; }
         .bl { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 15px; }
         .br { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 15px 0; }
-        
-        .scanner-line { 
-            position: absolute; width: 100%; height: 2px; background: var(--blue); 
-            box-shadow: 0 0 15px var(--blue); top: 0; animation: scan 3s infinite linear; 
-        }
-        @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
-
-        .controls { padding: 25px; background: #111; border-top: 1px solid #222; text-align: center; }
-        .status { font-size: 12px; color: #666; margin-bottom: 15px; text-transform: uppercase; }
-        .btn { background: var(--blue); color: #fff; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: bold; font-size: 16px; }
-        
-        #error-log { position: fixed; top: 70px; left: 10px; right: 10px; background: rgba(255,0,0,0.8); color: white; font-size: 10px; padding: 5px; border-radius: 5px; display: none; z-index: 1000; }
+        .line { position: absolute; width: 100%; height: 2px; background: #007AFF; box-shadow: 0 0 15px #007AFF; top: 0; animation: move 2s infinite linear; }
+        @keyframes move { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+        .status { position: fixed; bottom: 30px; width: 100%; text-align: center; font-size: 14px; color: #555; }
     </style>
 </head>
 <body>
-
-    <div class="header"><span>CLAP ACCESS PRO</span></div>
-    
-    <div id="error-log"></div>
-
-    <div class="viewport">
-        <video id="video" playsinline></video>
-        <div class="overlay">
-            <div class="corner tl"></div><div class="corner tr"></div>
-            <div class="corner bl"></div><div class="corner br"></div>
-            <div class="scanner-line"></div>
-        </div>
+    <video id="video"></video>
+    <div class="overlay">
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>
+        <div class="line"></div>
     </div>
-
-    <div class="controls">
-        <div id="status" class="status">Ініціалізація оптики...</div>
-        <button class="btn" onclick="location.reload()">ПЕРЕЗАВАНТАЖИТИ КАМЕРУ</button>
-    </div>
+    <div class="status">Очікування QR-коду...</div>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
-        
-        const codeReader = new ZXing.BrowserQRCodeReader();
-        const log = document.getElementById('error-log');
-        const status = document.getElementById('status');
-        let isProcessing = false;
+        const reader = new ZXing.BrowserQRCodeReader();
+        let active = true;
 
-        function showError(msg) {
-            log.style.display = 'block';
-            log.innerText = "Log: " + msg;
-        }
-
-        async function init() {
+        async function start() {
             try {
-                // Перевірка наявності медіа-пристроїв
-                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-                    throw new Error("Ваш браузер не підтримує доступ до камери.");
-                }
-
-                const devices = await codeReader.listVideoInputDevices();
-                
-                if (devices.length === 0) {
-                    throw new Error("Камеру не знайдено.");
-                }
-
-                // Вибираємо задню камеру
-                const selectedDevice = devices.find(d => 
-                    d.label.toLowerCase().includes('back') || 
-                    d.label.toLowerCase().includes('rear')
-                ) || devices[0];
-
-                status.innerText = "Камера активована";
-
-                codeReader.decodeFromVideoDevice(selectedDevice.deviceId, 'video', (result, error) => {
-                    if (result && !isProcessing) {
-                        isProcessing = true;
+                const devices = await reader.listVideoInputDevices();
+                const back = devices.find(d => d.label.includes('back')) || devices[0];
+                reader.decodeFromVideoDevice(back.deviceId, 'video', (result) => {
+                    if (result && active) {
+                        active = false;
                         tg.HapticFeedback.notificationOccurred('success');
                         tg.sendData(result.getText());
                     }
                 });
-
-            } catch (err) {
-                status.innerText = "Помилка камери";
-                showError(err.message);
-            }
+            } catch (e) { document.querySelector('.status').innerText = "Помилка камери"; }
         }
-
-        // Чекаємо завантаження і запускаємо
-        window.addEventListener('load', init);
+        start();
     </script>
 </body>
 </html>
